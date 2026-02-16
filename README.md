@@ -1,6 +1,12 @@
 # PowerForensics Ecosystem
 
-![PowerForensics Logo](assets/powerforensics_bn.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/powerforensics_bn.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/powerforensics.png">
+    <img alt="PowerForensics Logo" src="assets/powerforensics_color.png" width="300">
+  </picture>
+</p>
 
 PowerForensics is a DFIR ecosystem built for incident responders to go from **evidence acquisition** to **timeline correlation** and **graph analysis** — with clear, transparent workflows (no black boxes).
 
