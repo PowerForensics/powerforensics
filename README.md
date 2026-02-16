@@ -4,7 +4,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/powerforensics_bn.png">
     <source media="(prefers-color-scheme: light)" srcset="assets/powerforensics.png">
-    <img alt="PowerForensics Logo" src="assets/powerforensics_color.png" width="300">
+    <img alt="PowerForensics - Digital Evidence Ecosystem" src="assets/powerforensics_color.png">
   </picture>
 </p>
 
