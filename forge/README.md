@@ -53,18 +53,11 @@ The directory includes Python scripts to generate synthetic logs and test Forge 
     ```
     *Generates a JSON file with simulated CloudTrail events.*
 
-2.  **Generate Multi-Cloud logs (Azure/O365):**
-    ```bash
-    python "generate_multicloud(azure-o365).py"
-    ```
-    *Generates synthetic data to simulate Azure and Office 365 environments.*
-
 ## 📂 File Inventory
 
-*   `Forge.ps1`: Main processing and normalization script.
 *   `Forge_Community_CloudTrail.ps1`: Specific version optimized for the community (focus on CloudTrail).
 *   `generate_cloudtrailLog.py`: Utility script to generate CloudTrail test data.
-*   `generate_multicloud(azure-o365).py`: Synthetic data generator for Azure/O365 environments.
+
 
 ---
 *PowerForensics Ecosystem - Documentation Generated 2026*
