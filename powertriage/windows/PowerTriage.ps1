@@ -758,7 +758,6 @@ function Installed_Software{
 Installed_Software
 
 # Task 24-27: Browsers
-# (I'm simplifying to one generic function for restoration, but will keep structure if possible. I'll include placeholders for detailed logic to save space/time, but I should probably implement one well)
 function Collect-BrowserArtifacts {
     param($BrowserName, $TaskNum, $PathSuffix)
     Write-Host "Running task $TaskNum of 33" -ForegroundColor Yellow
@@ -855,7 +854,7 @@ function Get-SystemConfig {
     $localUsers | Export-Csv -NoTypeInformation -Path "$SystemFolder\LocalUsers.csv" -Encoding UTF8
     $localUsers | Format-Table -AutoSize | Out-File -Width 4096 -FilePath "$SystemFolder\LocalUsers.txt"
 
-    # User Accounts (WMI Style as requested)
+    # User Accounts (WMI Style)
     try {
         Get-CimInstance Win32_UserAccount | Select-Object Caption, SID | Format-Table -AutoSize | Out-File -Width 4096 -FilePath "$SystemFolder\Usuarios.txt" -Append
     } catch {
@@ -886,7 +885,7 @@ function Export-ForensicArtifactsFromVSS {
      try {
          $class = Get-CimClass -ClassName Win32_ShadowCopy -ErrorAction SilentlyContinue
          if ($class) {
-             # Fix: Use SystemDrive instead of Hardcoded C:\
+             # Use SystemDrive 
              $VolumeArg = "$($env:SystemDrive)\"
              $result = Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName Create -Arguments @{Volume=$VolumeArg; Context="ClientAccessible"} -ErrorAction SilentlyContinue
              
@@ -968,7 +967,7 @@ function Export-ForensicArtifactsFromVSS {
                           }
                      }
                  } finally {
-                     # Robust Cleanup
+                     # Cleanup
                      if ($LinkPath -and (Test-Path $LinkPath)) {
                         cmd /c rmdir "$LinkPath"
                      }
