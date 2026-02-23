@@ -571,10 +571,10 @@ generate_forensic_catalog() {
         
         # Calculate relative path (strip BASEDIR)
         # full_path is like ./powertriage_linux_.../file.txt or /path/to/mount/powertriage.../file.txt
-        # We want just "file.txt" or "subdir/file.txt" relative to the report folder root.
+     
         
         # Get the relative path by removing the prefix up to the BASEDIR name
-        # A safer way: relative to the directory containing the catalog
+      
         local rel_path="${full_path#$BASEDIR/}"
         
         # Get file stats
@@ -584,7 +584,7 @@ generate_forensic_catalog() {
         
         if [[ -f "$full_path" ]]; then
             # Attempt to get stats. 
-            # Note: BusyBox/GNU stat compatible format
+          
             size=$(stat -c %s "$full_path" 2>/dev/null || echo 0)
             # Cut to remove nanoseconds if present, keep YYYY-MM-DD HH:MM:SS
             ctime=$(stat -c %z "$full_path" 2>/dev/null | cut -d. -f1 || echo "N/A")
