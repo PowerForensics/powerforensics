@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# triageX_offline_iot_v6.1.sh
-# TRIAGEX IOT - OpenWrt (v6.1 Docente)
+# PowerTriage IOT - OpenWrt (v6.1 Docente)
 # Triage Tool for IoT OpenWrt (bash/python) - BETA
 # Author: Jesus D. Angosto (@jdangosto)
 # Notas v6.1:
@@ -457,3 +456,4 @@ fi
 
 # --- escribir summary explícito antes del EXIT trap ---
 finish
+
