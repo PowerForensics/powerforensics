@@ -6,6 +6,19 @@ It collects comprehensive forensic artifacts **without external dependencies** (
 
 > **Note:** This tool is part of the **PowerForensics** ecosystem.
 
+## 📦 Installation
+
+### Option 1: PowerShell Gallery (Recommended)
+You can install PowerTriage directly from the PowerShell Gallery:
+
+```powershell
+Install-Script -Name PowerTriage
+PowerTriage.ps1
+```
+
+### Option 2: Manual Download
+Download the script directly from this repository and run it.
+
 ## 🚀 Key Features
 
 PowerTriage performs **35+ specific forensic tasks**, optimized for speed and reliability:
@@ -31,8 +44,9 @@ PowerTriage performs **35+ specific forensic tasks**, optimized for speed and re
     *   **USB History:** Registry-based USB device enumeration.
 *   **Browsers (Auto-Discovery):** 
     *   History, Cookies, Login Data, and Profiles from **Chrome, Edge, Firefox, Opera, CCleaner Browser**.
+    *   **Browser Sync Detection:** Identifies logged-in users (Emails) via Preferences and LevelDB heuristics.
+    *   **Extensions Inventory:** Full enumeration per browser/user with SHA256 hashes of manifests.
     *   Smart profile discovery for Firefox (randomized path support).
-    *   Inventario de extensiones por navegador/usuario con hash SHA256 del manifest.
 *   **Email & Cloud:** 
     *   **Outlook:** PST/OST/Config file collection.
     *   **Cloud Storage:** Artifacts from **OneDrive, Teams, Google Drive, Dropbox**.
@@ -80,7 +94,7 @@ The script creates a directory named `PowerTriage_HOSTNAME_TIMESTAMP` (zipped at
 | Folder/File | Description |
 | :--- | :--- |
 | `Activities_Cache\` | Windows 10/11 Timeline Activity History (CDP) per user. |
-| `Browsers\` | History, Cookies, Logins and Extensions inventory (with SHA256 hashes) for Chrome, Edge, Firefox, Opera, CCleaner Browser. |
+| `Browsers\` | History, Cookies, Logins, Extensions inventory, and **Sync Status** (logged-in accounts) for Chrome, Edge, Firefox, Opera, CCleaner. |
 | `CloudStorage\` | Metadata/Logs from OneDrive, Teams, Google Drive, Dropbox. |
 | `EmailArtifacts\` | Outlook (OST/PST), Thunderbird, Windows Mail data. |
 | `EventsLogs\` | **Key EVTX:** Security, System, PowerShell, Sysmon, RDP, etc. |
@@ -105,6 +119,12 @@ The script creates a directory named `PowerTriage_HOSTNAME_TIMESTAMP` (zipped at
 *   🐦 Twitter/X: [@jdangosto](https://twitter.com/jdangosto)
 *   🐙 GitHub: [jdangosto](https://github.com/jdangosto)
 *   🌐 Blog: [DFIR Spain](https://www.dfirspain.es)
+*   🛡️ Project: [PowerForensics](https://powerforensics.es)
+
+## ⚠️ Disclaimer
+
+This tool is provided "as is" without warranty of any kind. Use it at your own risk. The author is not responsible for any damage caused by the use or misuse of this tool. **Always test in a controlled environment before using in production.**
+
 *   🛡️ Project: [PowerForensics](https://powerforensics.es)
 
 ## ⚠️ Disclaimer
