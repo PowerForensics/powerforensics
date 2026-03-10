@@ -121,7 +121,7 @@ The script creates a directory named `PowerTriage_HOSTNAME_TIMESTAMP` (zipped at
 *   🐙 GitHub: [jdangosto](https://github.com/jdangosto)
 *   🌐 Blog: [DFIR Spain](https://www.dfirspain.es)
 *   🛡️ Project: [PowerForensics](https://powerforensics.es)
-*    Contact: [PowerForensics](contacto@powerforensics.es)
+*    Contact: contacto@powerforensics.es
 
 ## ⚠️ Disclaimer
 
