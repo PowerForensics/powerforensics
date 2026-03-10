@@ -37,7 +37,8 @@ PowerTriage performs **35+ specific forensic tasks**, optimized for speed and re
 
 ### 🔍 Forensic Artifacts
 *   **File System:**
-    *   **MFT & NTFS:** Secure extraction via VSS.
+    *   **VSS Extraction (Pure PowerShell):** Safe collection of locked system files (SAM, SYSTEM, SECURITY, SOFTWARE, Amcache, etc.) via Volume Shadow Copies.
+    *   **Note on NTFS Meta-files:** To maintain a **Pure PowerShell** philosophy with **Zero External Dependencies** (no compiled binaries or raw disk tools), NTFS meta-files like **$MFT**, **$LogFile**, and **$UsnJrnl** are **excluded**. These artifacts require low-level raw disk access not available in native PowerShell APIs.
     *   **Recycle Bin:** Optimized parsing ($I/$R files).
     *   **Prefetch:** Execution history.
     *   **Recent Activity:** Recent Files, JumpLists (Automatic & Custom Destinations).
@@ -51,7 +52,7 @@ PowerTriage performs **35+ specific forensic tasks**, optimized for speed and re
     *   **Outlook:** PST/OST/Config file collection.
     *   **Cloud Storage:** Artifacts from **OneDrive, Teams, Google Drive, Dropbox**.
 
-### ⚡ Performance & Reliability (New)
+### ⚡ Performance & Reliability (New in v1.1.0)
 *   **Optimized Software Inventory:** Uses Registry keys instead of `Win32_Product` for instant, safe software enumeration (avoids MSI reconfiguration events).
 *   **Robust VSS Collection:** 
     *   **Language Agnostic:** Uses CIM/WMI class GUIDs to work on any system language.
@@ -107,7 +108,7 @@ The script creates a directory named `PowerTriage_HOSTNAME_TIMESTAMP` (zipped at
 | `RemoteAccess\` | Logs/Config from AnyDesk and TeamViewer. |
 | `System\` | Services, Autoruns, USB History, Environment Vars, Local Groups, Scheduled Tasks, Installed Software, Clipboard. |
 | `SystemConfig\` | Local Users, System Info, Firewall Rules. |
-| `VSS_Artifacts\` | **Locked Files:** SAM, SYSTEM, MFT, UsnJrnl, User Hives (NTUSER.DAT). |
+| `VSS_Artifacts\` | **Locked Files:** SAM, SYSTEM, SECURITY, SOFTWARE, Amcache, SRUDB, User Hives (NTUSER.DAT). |
 | `Hashes.csv` | **Chain of Custody:** SHA256 hashes of all collected files. |
 | `PowerTriage.log` | Detailed execution log with timestamps. |
 
@@ -120,12 +121,7 @@ The script creates a directory named `PowerTriage_HOSTNAME_TIMESTAMP` (zipped at
 *   🐙 GitHub: [jdangosto](https://github.com/jdangosto)
 *   🌐 Blog: [DFIR Spain](https://www.dfirspain.es)
 *   🛡️ Project: [PowerForensics](https://powerforensics.es)
-
-## ⚠️ Disclaimer
-
-This tool is provided "as is" without warranty of any kind. Use it at your own risk. The author is not responsible for any damage caused by the use or misuse of this tool. **Always test in a controlled environment before using in production.**
-
-*   🛡️ Project: [PowerForensics](https://powerforensics.es)
+*    Contact: [PowerForensics](contacto@powerforensics.es)
 
 ## ⚠️ Disclaimer
 
