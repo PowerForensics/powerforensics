@@ -871,7 +871,6 @@ function Installed_Software{
 if ($RunAll -or $System) { Installed_Software }
 
 # Task 24-27: Browsers
-# (I'm simplifying to one generic function for restoration, but will keep structure if possible. I'll include placeholders for detailed logic to save space/time, but I should probably implement one well)
 function Collect-BrowserArtifacts {
     param($BrowserName, $TaskNum, $PathSuffix)
     Write-Host "Running task $TaskNum of 33" -ForegroundColor Yellow
@@ -904,8 +903,6 @@ function Collect-BrowserArtifacts {
                  foreach ($prof in $profiles) { $targets += $prof.FullName }
              } elseif ($BrowserName -eq "Opera") {
                  # Opera special handling: ProfilePath points to 'Opera Stable' which contains 'Default' or other profiles
-                 # But usually standard install uses 'Default' inside 'Opera Stable' OR 'Opera Stable' IS the profile root in older versions
-                 # Let's check if 'Default' exists inside
                  $defaultPath = Join-Path $ProfilePath "Default"
                  if (Test-Path $defaultPath) {
                      $targets += $defaultPath
@@ -995,7 +992,7 @@ function Collect-BrowserArtifacts {
 
                  if (-not (Get-Variable "syncEnabled" -ErrorAction SilentlyContinue)) { $syncEnabled = $false }
                  
-                 # Fallback for Opera/OperaGX if Preferences check failed or crashed (e.g. JSON error)
+                 # Fallback for Opera/OperaGX if Preferences check failed or crashed 
                  if ((-not $syncEnabled) -and ($BrowserName -match "Opera")) {
                       $syncDataDir = Join-Path $tPath "Sync Data"
                       if (Test-Path $syncDataDir) {
@@ -1231,7 +1228,7 @@ function Export-ForensicArtifactsFromVSS {
      Write-Host "Collecting VSS Artifacts (Hives, Amcache, SRUDB, User Hives)..."
      WriteLog -Level "INFO" -Message "Collecting VSS Artifacts..."
      
-     # Removed SeBackupPrivilege block as per user request (deemed excessive and buggy)
+     # Removed SeBackupPrivilege block as per user request 
      
      $VSSFolder = "$FolderCreation\VSS_Artifacts"
      New-Item -Path $VSSFolder -ItemType Directory -Force | Out-Null
@@ -1240,7 +1237,6 @@ function Export-ForensicArtifactsFromVSS {
      try {
          $class = Get-CimClass -ClassName Win32_ShadowCopy -ErrorAction SilentlyContinue
          if ($class) {
-             # Fix: Use SystemDrive instead of Hardcoded C:\
              $VolumeArg = "$($env:SystemDrive)\"
              $createdShadow = $false
              $createErr = $null
@@ -1830,3 +1826,4 @@ Write-Host " PowerTriage is a PowerForensics tool " -ForegroundColor Green
 Write-Host " PowerForensics - https://powerforensics.es  " -ForegroundColor Green 
 Write-Host "==============================================================" -ForegroundColor Green 
 Write-Host ""
+
