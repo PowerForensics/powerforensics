@@ -1,42 +1,89 @@
-﻿<#PSScriptInfo
-.VERSION 1.1.0
+<#PSScriptInfo
+.VERSION 2.3.3
 .GUID 978e8b23-1d54-46c5-a20c-7b2d5f81e7d2
 .AUTHOR Jesus Angosto
 .COMPANYNAME PowerForensics
 .COPYRIGHT (c) 2025 Jesus Angosto. All rights reserved.
-.TAGS DFIR, Forensics, IncidentResponse, Triage, PowerShell
+.TAGS DFIR, Forensics, IncidentResponse, Triage, PowerShell, Windows, LiveResponse, CommunityEdition
 .LICENSEURI https://github.com/PowerForensics/powerforensics/blob/main/LICENSE
 .PROJECTURI  https://github.com/PowerForensics/powerforensics
-.ICONURI https://raw.githubusercontent.com/PowerForensics/powerforensics/main/icon.png
+.RELEASENOTES Default execution now runs the full CE workflow without interactive prompts, aligns output-directory behavior with unattended use, and improves browser profile collection plus Chronos timeline compatibility.
 #>
 
 <#
 .SYNOPSIS
-    PowerTriage - Fast Forensic Triage & Live Response Tool for Windows.
+    PowerTriage Windows CE - Community Edition live triage for DFIR on Windows.
 
 .DESCRIPTION
-    PowerTriage is a lightweight, dependency-free PowerShell script designed for Incident Response (DFIR) on compromised Windows devices.
-    It collects critical artifacts (Network, Process, Persistence, System, Browsers) and packages them for analysis.
+    PowerTriage Windows CE is a native PowerShell triage script designed for Incident Response (DFIR) and forensic triage on compromised Windows systems.
+    It focuses on practical live response, low deployment friction, and dependency-free artifact collection in the Community Edition.
     
-    Features:
-    - Zero Dependencies: Runs on standard PowerShell 5.1+
-    - Modular: Full or Minimal collection modes.
-    - Browser Forensics: Chrome, Edge, Firefox, Opera, Brave (History, Cookies, Extensions, Sync Status).
-    - System Triage: Network connections, Processes, Services, Scheduled Tasks, Registry Autoruns.
-    - Output: Structured CSV/TXT reports and a zipped final package.
+    Community Edition highlights:
+    - Native PowerShell: Runs on standard PowerShell 5.1+
+    - Live Triage: Focused on rapid collection from running Windows hosts
+    - Broad Coverage: Network, process, persistence, system, browser, cloud, and user artifacts
+    - Browser Forensics: Chrome, Edge, Firefox, Opera, Brave (history, cookies, extensions, sync status)
+    - System Triage: Network connections, processes, services, scheduled tasks, registry autoruns
+    - Structured Output: CSV/TXT artifacts, hashes, and a packaged final collection
+    - Low Friction: Intended for practical adoption by responders and analysts
+
+    The Pro workflow extends this model with advanced capabilities such as offline mounted-volume collection,
+    chain of custody outputs, executive reporting, and enhanced evidence packaging.
 
 .PARAMETER OutputDirectory
     Specifies the directory where the triage results will be saved. Defaults to current directory.
 
+.PARAMETER OutputRetention
+    Controls whether PowerTriage keeps the directory tree, the ZIP file, or both:
+    Both (default), DirectoryOnly, or ZipOnly.
+
+.PARAMETER PacketCapture
+    Enables native packet capture using pktmon during live collection.
+
+.PARAMETER PacketCaptureQuick
+    Enables a short packet capture profile intended for rapid triage.
+
+.PARAMETER PacketCaptureDuration
+    Specifies the packet capture duration in seconds. Default: 30.
+
+.PARAMETER PacketCaptureFormat
+    Specifies the packet capture output format: etl, pcapng, or both.
+
+.PARAMETER PacketCaptureProtocol
+    Limits packet capture to a protocol: Any, TCP, UDP, ICMP, or ICMPv6.
+
+.PARAMETER PacketCaptureDropOnly
+    Restricts packet capture to dropped packets.
+
+.PARAMETER PacketCaptureIP
+    Applies one or more IP or CIDR filters to packet capture.
+
+.PARAMETER PacketCapturePort
+    Applies one or more TCP/UDP port filters to packet capture.
+
+.PARAMETER BrowserCollectionMode
+    Controls how browser artifacts are collected when a browser is running:
+    BestEffort (default), GracefulClose, or ForceKill.
+
+.PARAMETER Timeline
+    Generates a Chronos-compatible JSON timeline from collected CE artifacts.
+
+.PARAMETER NexusLite
+    Generates a lightweight Nexus graph JSON from CE process, network, and RDP data.
+
+.PARAMETER Help
+    Shows the built-in help panel and exits.
+
 .PARAMETER Full
-    Performs a full collection of all available artifacts (Default behavior).
+    Performs the complete CE workflow, including full collection, Chronos timeline,
+    Nexus Lite, findings generation, and Executive HTML summary.
 
 .PARAMETER Minimal
     Performs a quick triage collecting only Volatile Data (Network, Process, System).
 
 .EXAMPLE
     .\PowerTriage.ps1
-    Runs a full triage and saves to the current directory.
+    Runs the full CE workflow by default and saves output to the current directory.
 
 .EXAMPLE
     .\PowerTriage.ps1 -Minimal
@@ -46,12 +93,46 @@
     .\PowerTriage.ps1 -OutputDirectory "C:\Cases\Case404"
     Runs a full triage and saves output to C:\Cases\Case404.
 
+.EXAMPLE
+    .\PowerTriage.ps1 -OutputRetention DirectoryOnly
+    Keeps the directory tree only and skips final ZIP generation.
+
+.EXAMPLE
+    .\PowerTriage.ps1 -BrowserCollectionMode GracefulClose
+    Attempts to close supported browsers cleanly before collecting browser artifacts.
+
+.EXAMPLE
+    .\PowerTriage.ps1 -Full -Timeline -NexusLite
+    Runs a full collection and generates Chronos timeline plus Nexus Lite graph outputs.
+
+.NOTES
+    Community Edition (CE) focuses on strong live triage for the DFIR community.
+    Some protected artifacts require administrator privileges; without elevation, the script continues in degraded mode when possible.
+
 .LINK
    https://github.com/PowerForensics/powerforensics
 #>
 
 param(
+    [Alias('O')]
     [string]$OutputDirectory,
+    [ValidateSet('Both','DirectoryOnly','ZipOnly')]
+    [string]$OutputRetention = 'Both',
+    [switch]$PacketCapture,
+    [switch]$PacketCaptureQuick,
+    [ValidateRange(5, 3600)]
+    [int]$PacketCaptureDuration = 30,
+    [ValidateSet('etl','pcapng','both')]
+    [string]$PacketCaptureFormat = 'both',
+    [ValidateSet('Any','TCP','UDP','ICMP','ICMPv6')]
+    [string]$PacketCaptureProtocol = 'Any',
+    [switch]$PacketCaptureDropOnly,
+    [string[]]$PacketCaptureIP,
+    [int[]]$PacketCapturePort,
+    [ValidateSet('BestEffort','GracefulClose','ForceKill')]
+    [string]$BrowserCollectionMode = 'BestEffort',
+    [switch]$Timeline,
+    [switch]$NexusLite,
     [Parameter(Mandatory=$false)]
     [Alias('h')]
     [switch]$Help,
@@ -59,14 +140,14 @@ param(
     [Alias('f')]
     [switch]$Full,
     [Parameter(Mandatory=$false)]
-    [Alias('M')]
+    [Alias('m')]
     [switch]$Minimal
 )
 
-# PowerTriage Windows
+# PowerTriage Windows CE
 # Live Response & Forensic Triage Tool
 
-$Version = "1.1.0"
+$Version = "2.3.3"
 
 function Show-Banner {
     Clear-Host
@@ -77,8 +158,8 @@ function Show-Banner {
     Write-Host " |____|   \____/ \/\_/  \___  >__|   |____|   |__|  |__(____  /\___  / \___  > " -ForegroundColor Cyan
     Write-Host "                            \/                              \//_____/      \/ " -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "PowerTriage is a script to perform incident response via PowerShell on compromised devices with an Windows Operating System (Workstation & Server)." -ForegroundColor Yellow
-    Write-Host "Version: $Version" -ForegroundColor White
+    Write-Host "PowerTriage Windows CE is a community live-triage script for Windows DFIR and Incident Response." -ForegroundColor Yellow
+    Write-Host "Version: $Version (Community Edition)" -ForegroundColor White
     Write-Host "By twitter 'X': @jdangosto, https://github.com/jdangosto  - Jesus Angosto (jdangosto)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "=============================================================" -ForegroundColor Green
@@ -91,27 +172,87 @@ function Show-Banner {
     Write-Host ""
 }
 
-# Show Help if requested
-if ($Help) {
+function Show-Help {
     Show-Banner
     Write-Host "USAGE:" -ForegroundColor Yellow
     Write-Host "  .\PowerTriage.ps1 [Options]"
     Write-Host ""
-    Write-Host "OPTIONS:" -ForegroundColor Yellow
-    Write-Host "  -OutputDirectory <Path>  Specify directory to save results"
-    Write-Host "  -Full, -f                Collect ALL artifacts (Default)"
-    Write-Host "  -Minimal, -M             Collect minimal triage set (Network, System, Process)"
-    Write-Host "  -Help, -h                Show this help message"
+    Write-Host "COLLECTION MODES:" -ForegroundColor Yellow
+    Write-Host "  -Full, -f               Complete Community Edition workflow"
+    Write-Host "                           Includes: Network, System, Process, Events, Users,"
+    Write-Host "                           Browser, Disk, Cloud, Chronos Timeline,"
+    Write-Host "                           Nexus Lite, findings, and Executive HTML summary."
+    Write-Host "  -Minimal, -m            Quick triage mode"
+    Write-Host "                           Includes: Network, System, and Process artifacts only."
+    Write-Host "                           Default execution mode is Full when none is specified."
+    Write-Host ""
+    Write-Host "GENERAL OPTIONS:" -ForegroundColor Yellow
+    Write-Host "  -OutputDirectory, -O    Directory where results will be stored."
+    Write-Host "                           Default: current directory."
+    Write-Host "  -OutputRetention        Both, DirectoryOnly, or ZipOnly."
+    Write-Host "                           Default: Both."
+    Write-Host "  -BrowserCollectionMode  BestEffort, GracefulClose, or ForceKill."
+    Write-Host "                           Default: BestEffort."
+    Write-Host "  -Timeline               Export a Chronos-compatible timeline JSON."
+    Write-Host "  -NexusLite              Export a lightweight Nexus graph JSON."
+    Write-Host "  -Help, -h               Show this help panel and exit."
+    Write-Host ""
+    Write-Host "PACKET CAPTURE OPTIONS:" -ForegroundColor Yellow
+    Write-Host "  -PacketCapture          Enable pktmon packet capture during triage."
+    Write-Host "  -PacketCaptureQuick     Use the short packet capture profile (15 seconds)."
+    Write-Host "  -PacketCaptureDuration  Capture duration in seconds. Default: 30."
+    Write-Host "  -PacketCaptureFormat    etl, pcapng, or both. Default: both."
+    Write-Host "  -PacketCaptureProtocol  Any, TCP, UDP, ICMP, or ICMPv6. Default: Any."
+    Write-Host "  -PacketCaptureDropOnly  Capture dropped packets only."
+    Write-Host "  -PacketCaptureIP        One or more IP or CIDR filters."
+    Write-Host "  -PacketCapturePort      One or more TCP/UDP port filters."
+    Write-Host ""
+    Write-Host "OUTPUTS:" -ForegroundColor Yellow
+    Write-Host "  - Directory tree per execution: PowerTriage_<HOST>_<Timestamp>"
+    Write-Host "  - PowerTriage.log"
+    Write-Host "  - Hashes.csv"
+    Write-Host "  - Structured CSV/TXT artifacts by category"
+    Write-Host "  - Findings\\Findings.csv, Findings.jsonl, Findings_Summary.txt"
+    Write-Host "  - Executive_Report.html"
+    Write-Host "  - Optional Timeline\\PowerTriage_Timeline_Chronos.json when -Timeline is enabled"
+    Write-Host "  - Optional Network\\Nexus_Graph_Lite.json when -NexusLite is enabled"
+    Write-Host "  - Optional final compressed collection package depending on -OutputRetention"
+    Write-Host "  - Optional Network\\PacketCapture outputs when pktmon is enabled"
+    Write-Host ""
+    Write-Host "ABOUT CE:" -ForegroundColor Yellow
+    Write-Host "  Community Edition focuses on live triage, low friction, and practical DFIR adoption."
+    Write-Host "  Some advanced offline acquisition, reporting, and evidence-packaging workflows are reserved for PRO."
     Write-Host ""
     Write-Host "EXAMPLES:" -ForegroundColor Yellow
     Write-Host "  .\PowerTriage.ps1"
+    Write-Host "  .\PowerTriage.ps1 -Full"
     Write-Host "  .\PowerTriage.ps1 -Minimal"
     Write-Host "  .\PowerTriage.ps1 -OutputDirectory 'C:\Cases\Case001'"
+    Write-Host "  .\PowerTriage.ps1 -OutputRetention DirectoryOnly"
+    Write-Host "  .\PowerTriage.ps1 -BrowserCollectionMode GracefulClose"
+    Write-Host "  .\PowerTriage.ps1 -Full -Timeline -NexusLite"
+    Write-Host "  .\PowerTriage.ps1 -PacketCapture -PacketCaptureDuration 60"
+    Write-Host "  .\PowerTriage.ps1 -PacketCaptureQuick -PacketCaptureIP '10.10.10.10' -PacketCapturePort 443"
+    Write-Host "  .\PowerTriage.ps1 -PacketCapture -PacketCaptureProtocol TCP -PacketCaptureDropOnly -PacketCaptureFormat pcapng"
     Write-Host ""
+}
+
+# Show Help if requested
+if ($Help) {
+    Show-Help
     exit 0
 }
 
 # Apply Minimal or Full logic
+if ($Full -and $Minimal) {
+    Write-Warning "Use either -Full or -Minimal, not both."
+    exit 1
+}
+
+if ((-not $Full) -and (-not $Minimal)) {
+    $Full = $true
+}
+
 # Initialize internal flags
 $Network = $false
 $System = $false
@@ -122,13 +263,22 @@ $Browser = $false
 $Disk = $false
 $Cloud = $false
 $RunAll = $false
+$GenerateFindings = $true
+$GenerateExecutiveReport = $true
+
+if ($PacketCaptureQuick -or $PacketCaptureIP -or $PacketCapturePort -or $PacketCaptureDropOnly -or ($PacketCaptureProtocol -ne 'Any')) {
+    $PacketCapture = $true
+}
+
+if ($PacketCaptureQuick -and $PacketCaptureDuration -eq 30) {
+    $PacketCaptureDuration = 15
+}
 
 if ($Minimal) {
     $Network = $true
     $System = $true
     $Process = $true
-} elseif ($Full -or (-not $Minimal)) {
-    # Default to Full if Minimal is not specified
+} else {
     $RunAll = $true
     $Network = $true
     $System = $true
@@ -138,6 +288,8 @@ if ($Minimal) {
     $Browser = $true
     $Disk = $true
     $Cloud = $true
+    $Timeline = $true
+    $NexusLite = $true
 }
 
 Show-Banner
@@ -145,18 +297,13 @@ Show-Banner
 # Check Admin
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "Please run this script as Administrator!"
-    Break
+    Write-Warning "Continuing in degraded mode; some artifacts may be unavailable."
 }
 
 # Output Directory Selection
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    # Interactive Mode
-    $targetDir = Read-Host "Enter output directory path (Press Enter for current directory: $PWD)"
-    if ([string]::IsNullOrWhiteSpace($targetDir)) {
-        $targetDir = $PWD
-    }
+    $targetDir = $PWD
 } else {
-    # Unattended/Param Mode
     $targetDir = $OutputDirectory
 }
 
@@ -207,6 +354,348 @@ function Set-ArtifactVisible {
     } catch {}
 }
 
+function Get-BrowserProcessNames {
+    param([string]$BrowserName)
+
+    switch ($BrowserName) {
+        "Firefox" { return @("firefox") }
+        "Opera" { return @("opera") }
+        "OperaGX" { return @("opera") }
+        "Edge" { return @("msedge") }
+        "Chrome" { return @("chrome") }
+        "CCleaner" { return @("CCleanerBrowser") }
+        "Brave" { return @("brave") }
+        default { return @() }
+    }
+}
+
+function Add-BrowserProcessAction {
+    param(
+        [string]$Browser,
+        [string]$User,
+        [int]$ProcessId,
+        [string]$ProcessName,
+        [string]$Mode,
+        [string]$Action,
+        [string]$Status,
+        [string]$Details
+    )
+
+    if (-not (Get-Variable -Name BrowserProcessActions -Scope Script -ErrorAction SilentlyContinue)) {
+        $script:BrowserProcessActions = New-Object System.Collections.Generic.List[object]
+    }
+
+    $script:BrowserProcessActions.Add([PSCustomObject]@{
+        TimestampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        Browser = $Browser
+        User = $User
+        ProcessId = $ProcessId
+        ProcessName = $ProcessName
+        Mode = $Mode
+        Action = $Action
+        Status = $Status
+        Details = $Details
+    }) | Out-Null
+}
+
+function Invoke-BrowserCollectionPreparation {
+    param([string]$BrowserName)
+
+    if ($BrowserCollectionMode -eq 'BestEffort') {
+        WriteLog -Level "INFO" -Message "Browser collection mode for ${BrowserName}: BestEffort (no process interaction)."
+        return
+    }
+
+    $processNames = Get-BrowserProcessNames -BrowserName $BrowserName
+    if ($processNames.Count -eq 0) {
+        return
+    }
+
+    $running = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue | Sort-Object Id -Unique)
+    if ($running.Count -eq 0) {
+        WriteLog -Level "INFO" -Message "No running processes found for browser $BrowserName."
+        return
+    }
+
+    Write-Host "Browser collection mode for ${BrowserName}: $BrowserCollectionMode" -ForegroundColor DarkYellow
+    WriteLog -Level "INFO" -Message "Preparing browser collection for ${BrowserName} using mode $BrowserCollectionMode."
+
+    foreach ($proc in $running) {
+        $userName = "Unknown"
+        try {
+            $owner = Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue | Invoke-CimMethod -MethodName GetOwner -ErrorAction SilentlyContinue
+            if ($owner -and $owner.User) {
+                $userName = if ($owner.Domain) { "$($owner.Domain)\$($owner.User)" } else { $owner.User }
+            }
+        } catch {}
+
+        if ($BrowserCollectionMode -in @('GracefulClose','ForceKill')) {
+            try {
+                if ($proc.MainWindowHandle -ne 0) {
+                    $closed = $proc.CloseMainWindow()
+                    Add-BrowserProcessAction -Browser $BrowserName -User $userName -ProcessId $proc.Id -ProcessName $proc.ProcessName -Mode $BrowserCollectionMode -Action "CloseMainWindow" -Status $(if ($closed) { "Requested" } else { "Rejected" }) -Details "Requested graceful close before artifact collection."
+                } else {
+                    Add-BrowserProcessAction -Browser $BrowserName -User $userName -ProcessId $proc.Id -ProcessName $proc.ProcessName -Mode $BrowserCollectionMode -Action "CloseMainWindow" -Status "Skipped" -Details "Process has no main window handle."
+                }
+            } catch {
+                Add-BrowserProcessAction -Browser $BrowserName -User $userName -ProcessId $proc.Id -ProcessName $proc.ProcessName -Mode $BrowserCollectionMode -Action "CloseMainWindow" -Status "Error" -Details $_.Exception.Message
+            }
+        }
+    }
+
+    Start-Sleep -Seconds 4
+
+    if ($BrowserCollectionMode -eq 'ForceKill') {
+        $remaining = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue | Sort-Object Id -Unique)
+        foreach ($proc in $remaining) {
+            $userName = "Unknown"
+            try {
+                $owner = Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue | Invoke-CimMethod -MethodName GetOwner -ErrorAction SilentlyContinue
+                if ($owner -and $owner.User) {
+                    $userName = if ($owner.Domain) { "$($owner.Domain)\$($owner.User)" } else { $owner.User }
+                }
+            } catch {}
+
+            try {
+                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+                Add-BrowserProcessAction -Browser $BrowserName -User $userName -ProcessId $proc.Id -ProcessName $proc.ProcessName -Mode $BrowserCollectionMode -Action "Stop-Process" -Status "Success" -Details "Forced termination before artifact collection."
+            } catch {
+                Add-BrowserProcessAction -Browser $BrowserName -User $userName -ProcessId $proc.Id -ProcessName $proc.ProcessName -Mode $BrowserCollectionMode -Action "Stop-Process" -Status "Error" -Details $_.Exception.Message
+            }
+        }
+    }
+}
+
+function Add-PacketCaptureFilters {
+    param(
+        [string[]]$IPs,
+        [int[]]$Ports,
+        [string]$Protocol = 'Any'
+    )
+
+    $filtersApplied = New-Object System.Collections.Generic.List[string]
+    try { & pktmon filter remove 2>$null | Out-Null } catch {}
+
+    $normalizedIps = @($IPs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $normalizedPorts = @($Ports | Where-Object { $_ -gt 0 } | Select-Object -Unique)
+    $filterIndex = 0
+
+    $transportArgs = @()
+    if ($Protocol -and $Protocol -ne 'Any') {
+        $transportArgs = @('-t', $Protocol)
+    }
+
+    if (($Protocol -in @('ICMP','ICMPv6')) -and $normalizedPorts.Count -gt 0) {
+        $normalizedPorts = @()
+    }
+
+    if ($normalizedIps.Count -gt 0 -and $normalizedPorts.Count -gt 0) {
+        foreach ($ip in $normalizedIps) {
+            foreach ($port in $normalizedPorts) {
+                $filterIndex++
+                $name = "PT_IPPort_$filterIndex"
+                $args = @('filter','add',$name,'-i',$ip,'-p',$port) + $transportArgs
+                & pktmon @args 2>&1 | Out-Null
+                [void]$filtersApplied.Add("name=$name ip=$ip port=$port protocol=$Protocol")
+            }
+        }
+    } elseif ($normalizedIps.Count -gt 0) {
+        foreach ($ip in $normalizedIps) {
+            $filterIndex++
+            $name = "PT_IP_$filterIndex"
+            $args = @('filter','add',$name,'-i',$ip) + $transportArgs
+            & pktmon @args 2>&1 | Out-Null
+            [void]$filtersApplied.Add("name=$name ip=$ip protocol=$Protocol")
+        }
+    } elseif ($normalizedPorts.Count -gt 0) {
+        foreach ($port in $normalizedPorts) {
+            $filterIndex++
+            $name = "PT_Port_$filterIndex"
+            $args = @('filter','add',$name,'-p',$port) + $transportArgs
+            & pktmon @args 2>&1 | Out-Null
+            [void]$filtersApplied.Add("name=$name port=$port protocol=$Protocol")
+        }
+    } elseif ($transportArgs.Count -gt 0) {
+        $filterIndex++
+        $name = "PT_Proto_$filterIndex"
+        $args = @('filter','add',$name) + $transportArgs
+        & pktmon @args 2>&1 | Out-Null
+        [void]$filtersApplied.Add("name=$name protocol=$Protocol")
+    }
+
+    return @($filtersApplied)
+}
+
+function New-PacketCaptureOutputEntry {
+    param([string]$Path)
+
+    $exists = Test-Path -LiteralPath $Path -ErrorAction SilentlyContinue
+    $size = $null
+    $sha256 = $null
+
+    if ($exists) {
+        try { $size = (Get-Item -LiteralPath $Path -ErrorAction Stop).Length } catch {}
+        try { $sha256 = (Get-FileHash -Path $Path -Algorithm SHA256 -ErrorAction Stop).Hash } catch {}
+    }
+
+    return [ordered]@{
+        path = $Path
+        exists = [bool]$exists
+        size = $size
+        sha256 = $sha256
+    }
+}
+
+function Convert-ToTimelineTimestamp {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+
+    if ($Value -is [datetime]) {
+        return $Value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    }
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text) -or $text -eq 'N/A') { return $null }
+
+    try {
+        if ($text -match '^\d{14}\.\d{6}[\+\-]\d{3}$') {
+            $dt = [System.Management.ManagementDateTimeConverter]::ToDateTime($text)
+            if ($dt.Year -le 1601) { return $null }
+            return $dt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        }
+    } catch {}
+
+    try {
+        $dt = [datetime]::Parse($text)
+        if ($dt.Year -le 1601) { return $null }
+        return $dt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    } catch {}
+
+    return $null
+}
+
+function New-ChronosTimelineEvent {
+    param(
+        [string]$Timestamp,
+        [string]$Title,
+        [string]$Description,
+        [string]$Type,
+        [string]$Priority,
+        [string]$Source,
+        [hashtable]$Metadata = $null
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Timestamp)) { return $null }
+
+    if (-not $Metadata) {
+        $Metadata = @{}
+    }
+
+    if (-not $Metadata.ContainsKey('tags')) {
+        $Metadata['tags'] = @('powertriage','windows','ce')
+    }
+
+    if (-not $script:ChronosTimelineEventCounter) {
+        $script:ChronosTimelineEventCounter = 0
+    }
+    $script:ChronosTimelineEventCounter++
+    $eventId = "pt-ce-{0:D6}" -f $script:ChronosTimelineEventCounter
+
+    return [PSCustomObject][ordered]@{
+        id = $eventId
+        timestamp = $Timestamp
+        title = $Title
+        description = $Description
+        type = $Type
+        priority = $Priority
+        asset = $env:COMPUTERNAME
+        source = $Source
+        author = 'PowerTriage'
+        caseId = "powertriage-$($env:COMPUTERNAME.ToLowerInvariant())"
+        metadata = $Metadata
+    }
+}
+
+function Add-ChronosTimelineEvent {
+    param(
+        [System.Collections.Generic.List[object]]$Events,
+        [object]$Event
+    )
+
+    if ($null -ne $Event) {
+        $Events.Add($Event) | Out-Null
+    }
+}
+
+function Add-TimelineFileArtifactEvents {
+    param(
+        [System.Collections.Generic.List[object]]$Events,
+        [string]$RootPath,
+        [string]$Source,
+        [string]$Type,
+        [string]$Priority,
+        [string]$TitlePrefix
+    )
+
+    if (-not (Test-Path -LiteralPath $RootPath -ErrorAction SilentlyContinue)) { return }
+
+    Get-ChildItem -LiteralPath $RootPath -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $timestamp = Convert-ToTimelineTimestamp $_.LastWriteTime
+        $relativePath = $_.FullName.Substring($FolderCreation.Length + 1)
+        $description = "Observed file artifact: $relativePath | Size=$($_.Length) | LastWriteTime=$($_.LastWriteTime)"
+        $metadata = @{
+            tags = @('powertriage','windows','ce',$Source)
+            path = $relativePath
+            evidencePath = $relativePath
+            activityType = 'Observed'
+        }
+        Add-ChronosTimelineEvent -Events $Events -Event (New-ChronosTimelineEvent -Timestamp $timestamp -Title "${TitlePrefix}: $($_.Name)" -Description $description -Type $Type -Priority $Priority -Source $Source -Metadata $metadata)
+    }
+}
+
+function Add-NexusLiteNode {
+    param(
+        [System.Collections.Generic.List[object]]$Nodes,
+        [hashtable]$Tracker,
+        [string]$Id,
+        [string]$Type,
+        [string]$Label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Id)) { return }
+    if (-not $Tracker.ContainsKey($Id)) {
+        $Nodes.Add([PSCustomObject][ordered]@{
+            id = $Id
+            type = $Type
+            label = $Label
+        }) | Out-Null
+        $Tracker[$Id] = $true
+    }
+}
+
+function Add-NexusLiteEdge {
+    param(
+        [System.Collections.Generic.List[object]]$Edges,
+        [hashtable]$Tracker,
+        [hashtable]$Edge
+    )
+
+    $key = @(
+        $Edge.type,
+        $Edge.src,
+        $Edge.dst,
+        $(if ($Edge.timestamp) { $Edge.timestamp } else { '' }),
+        $(if ($Edge.label) { $Edge.label } else { '' }),
+        $(if ($Edge.note) { $Edge.note } else { '' })
+    ) -join '|'
+
+    if (-not $Tracker.ContainsKey($key)) {
+        $Edges.Add([PSCustomObject]$Edge) | Out-Null
+        $Tracker[$key] = $true
+    }
+}
+
 # --- Tasks ---
 
 # Task 1-4: Network
@@ -232,6 +721,148 @@ function Get-NetworkInfo {
     WriteLog -Level "INFO" -Message "Network Info collected."
 }
 if ($RunAll -or $Network) { Get-NetworkInfo }
+
+function Invoke-PacketCapture {
+    Write-Host "Running task 4b of 34" -ForegroundColor Yellow
+    Write-Host "Capturing live network traffic with pktmon for $PacketCaptureDuration seconds..."
+    WriteLog -Level "INFO" -Message "Starting pktmon packet capture. DurationSeconds=$PacketCaptureDuration"
+
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+    if (-not $isAdmin) {
+        Write-Warning "pktmon packet capture requires Administrator privileges. Skipping capture."
+        WriteLog -Level "WARN" -Message "Skipping pktmon capture because the process is not elevated."
+        return
+    }
+
+    $pktmonCmd = Get-Command pktmon -ErrorAction SilentlyContinue
+    if (-not $pktmonCmd) {
+        Write-Warning "pktmon was not found on this system. Skipping packet capture."
+        WriteLog -Level "WARN" -Message "Skipping pktmon capture because pktmon is unavailable."
+        return
+    }
+
+    $captureFolder = Join-Path $FolderCreation "Network\PacketCapture"
+    New-Item -Path $captureFolder -ItemType Directory -Force | Out-Null
+
+    $etlPath = Join-Path $captureFolder "PktMon_Capture.etl"
+    $txtPath = Join-Path $captureFolder "PktMon_Capture.txt"
+    $pcapPath = Join-Path $captureFolder "PktMon_Capture.pcapng"
+    $metaPath = Join-Path $captureFolder "PktMon_Capture_Metadata.txt"
+    $reportPath = Join-Path $captureFolder "PacketCapture_Report.json"
+    $startUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+    $captureStarted = $false
+    $filtersApplied = @()
+    $captureType = $(if ($PacketCaptureDropOnly) { 'drop' } else { 'all' })
+    $effectiveProtocol = $PacketCaptureProtocol
+    $effectivePorts = @($PacketCapturePort | Where-Object { $_ -gt 0 } | Select-Object -Unique)
+    if (($effectiveProtocol -in @('ICMP','ICMPv6')) -and $effectivePorts.Count -gt 0) {
+        WriteLog -Level "WARN" -Message "Ignoring port filters for protocol $effectiveProtocol."
+        $effectivePorts = @()
+    }
+
+    try {
+        & pktmon stop 2>$null | Out-Null
+        $filtersApplied = Add-PacketCaptureFilters -IPs $PacketCaptureIP -Ports $effectivePorts -Protocol $effectiveProtocol
+
+        $startArgs = @('start','--capture','--comp','nics','--type',$captureType,'--pkt-size','0','--file-name',$etlPath,'--file-size','256')
+        $startOutput = (& pktmon @startArgs 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "pktmon start failed. $startOutput"
+        }
+
+        $captureStarted = $true
+        Start-Sleep -Seconds $PacketCaptureDuration
+
+        $stopOutput = (& pktmon stop 2>&1 | Out-String).Trim()
+        $captureStarted = $false
+
+        if (Test-Path -LiteralPath $etlPath) {
+            WriteHash -FilePath $etlPath
+        } else {
+            WriteLog -Level "WARN" -Message "pktmon capture completed but ETL output was not found at $etlPath"
+        }
+
+        try {
+            $txtOutput = (& pktmon etl2txt $etlPath --out $txtPath --timestamp --metadata --brief 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) {
+                WriteLog -Level "WARN" -Message "pktmon etl2txt failed. Output=$txtOutput"
+            } elseif (Test-Path -LiteralPath $txtPath) {
+                WriteHash -FilePath $txtPath
+            }
+        } catch {
+            WriteLog -Level "WARN" -Message "pktmon etl2txt exception: $($_.Exception.Message)"
+        }
+
+        if ($PacketCaptureFormat -in @('pcapng','both')) {
+            try {
+                $pcapArgs = @('etl2pcap', $etlPath, '--out', $pcapPath)
+                if ($PacketCaptureDropOnly) { $pcapArgs += '--drop-only' }
+                $pcapOutput = (& pktmon @pcapArgs 2>&1 | Out-String).Trim()
+                if ($LASTEXITCODE -ne 0) {
+                    WriteLog -Level "WARN" -Message "pktmon etl2pcap failed. Output=$pcapOutput"
+                } elseif (Test-Path -LiteralPath $pcapPath) {
+                    WriteHash -FilePath $pcapPath
+                }
+            } catch {
+                WriteLog -Level "WARN" -Message "pktmon etl2pcap exception: $($_.Exception.Message)"
+            }
+        }
+
+        $metadata = @(
+            "tool=pktmon",
+            "profile=$(if ($PacketCaptureQuick) { 'quick' } else { 'standard' })",
+            "duration_seconds=$PacketCaptureDuration",
+            "format=$PacketCaptureFormat",
+            "protocol=$effectiveProtocol",
+            "drop_only=$PacketCaptureDropOnly",
+            "start_utc=$startUtc",
+            "end_utc=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))",
+            "capture_file=$etlPath",
+            "text_file=$txtPath",
+            "pcapng_file=$pcapPath",
+            "start_command=pktmon $($startArgs -join ' ')",
+            "filters_applied=$($filtersApplied -join '; ')",
+            "stop_output=$stopOutput"
+        )
+        $metadata | Out-File -FilePath $metaPath -Encoding UTF8 -Force
+        WriteHash -FilePath $metaPath
+
+        $report = [ordered]@{
+            tool = "pktmon"
+            profile = $(if ($PacketCaptureQuick) { "quick" } else { "standard" })
+            duration_seconds = $PacketCaptureDuration
+            format = $PacketCaptureFormat
+            protocol = $effectiveProtocol
+            drop_only = [bool]$PacketCaptureDropOnly
+            filters = [ordered]@{
+                ip = @($PacketCaptureIP | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+                port = @($effectivePorts)
+                applied = @($filtersApplied)
+            }
+            outputs = [ordered]@{
+                etl = (New-PacketCaptureOutputEntry -Path $etlPath)
+                txt = (New-PacketCaptureOutputEntry -Path $txtPath)
+                pcapng = (New-PacketCaptureOutputEntry -Path $pcapPath)
+                metadata = (New-PacketCaptureOutputEntry -Path $metaPath)
+            }
+            start_utc = $startUtc
+            end_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        }
+        $report | ConvertTo-Json -Depth 6 | Out-File -FilePath $reportPath -Encoding UTF8 -Force
+        WriteHash -FilePath $reportPath
+
+        WriteLog -Level "INFO" -Message "pktmon capture finished. ETL=$etlPath TXT=$txtPath PCAP=$pcapPath"
+    } catch {
+        Write-Warning "pktmon capture failed: $($_.Exception.Message)"
+        WriteLog -Level "ERROR" -Message "pktmon capture failed: $($_.Exception.Message)"
+    } finally {
+        if ($captureStarted) {
+            try { & pktmon stop 2>$null | Out-Null } catch {}
+        }
+        try { & pktmon filter remove 2>$null | Out-Null } catch {}
+    }
+}
+if ($PacketCapture) { Invoke-PacketCapture }
 
 # Task 5: SMB Shares & Sessions
 function Get-SmbInfo {
@@ -871,11 +1502,14 @@ function Installed_Software{
 if ($RunAll -or $System) { Installed_Software }
 
 # Task 24-27: Browsers
+# (I'm simplifying to one generic function for restoration, but will keep structure if possible. I'll include placeholders for detailed logic to save space/time, but I should probably implement one well)
 function Collect-BrowserArtifacts {
     param($BrowserName, $TaskNum, $PathSuffix)
     Write-Host "Running task $TaskNum of 33" -ForegroundColor Yellow
     Write-Host "Collecting $BrowserName artifacts..."
     WriteLog -Level "INFO" -Message "Collecting $BrowserName artifacts"
+
+    Invoke-BrowserCollectionPreparation -BrowserName $BrowserName
     
     $DestBase = "$FolderCreation\Browsers\$BrowserName"
     $usersDirectory = Join-Path $env:SystemDrive "Users"
@@ -898,30 +1532,86 @@ function Collect-BrowserArtifacts {
              New-Item -Path $DestUser -ItemType Directory -Force | Out-Null
              
              $targets = @()
+             $supportFiles = @()
              if ($BrowserName -eq "Firefox") {
                  $profiles = Get-ChildItem -Path $ProfilePath -Directory -ErrorAction SilentlyContinue
-                 foreach ($prof in $profiles) { $targets += $prof.FullName }
+                 foreach ($prof in $profiles) {
+                     $targets += [PSCustomObject]@{
+                         Name = $prof.Name
+                         Path = $prof.FullName
+                     }
+                 }
              } elseif ($BrowserName -eq "Opera") {
-                 # Opera special handling: ProfilePath points to 'Opera Stable' which contains 'Default' or other profiles
                  $defaultPath = Join-Path $ProfilePath "Default"
                  if (Test-Path $defaultPath) {
-                     $targets += $defaultPath
+                     $targets += [PSCustomObject]@{
+                         Name = "Default"
+                         Path = $defaultPath
+                     }
                  } else {
-                     $targets += $ProfilePath
+                     $targets += [PSCustomObject]@{
+                         Name = (Split-Path $ProfilePath -Leaf)
+                         Path = $ProfilePath
+                     }
                  }
              } elseif ($BrowserName -eq "OperaGX") {
-                 # Similar check for Opera GX
                  $defaultPath = Join-Path $ProfilePath "Default"
                  if (Test-Path $defaultPath) {
-                     $targets += $defaultPath
+                     $targets += [PSCustomObject]@{
+                         Name = "Default"
+                         Path = $defaultPath
+                     }
                  } else {
-                     $targets += $ProfilePath
+                     $targets += [PSCustomObject]@{
+                         Name = (Split-Path $ProfilePath -Leaf)
+                         Path = $ProfilePath
+                     }
+                 }
+             } elseif ($ProfilePath -match '\\Default$') {
+                 $profileRoot = Split-Path $ProfilePath -Parent
+                 $profileDirs = Get-ChildItem -Path $profileRoot -Directory -ErrorAction SilentlyContinue |
+                     Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' -or $_.Name -eq 'Guest Profile' -or $_.Name -eq 'System Profile' }
+                 foreach ($prof in $profileDirs) {
+                     $targets += [PSCustomObject]@{
+                         Name = $prof.Name
+                         Path = $prof.FullName
+                     }
+                 }
+                 foreach ($supportName in @('Local State', 'First Run')) {
+                     $supportPath = Join-Path $profileRoot $supportName
+                     if (Test-Path $supportPath) {
+                         $supportFiles += $supportPath
+                     }
                  }
              } else {
-                 $targets += $ProfilePath
+                 $targets += [PSCustomObject]@{
+                     Name = (Split-Path $ProfilePath -Leaf)
+                     Path = $ProfilePath
+                 }
              }
 
-             foreach ($tPath in $targets) {
+             if ($targets.Count -eq 0) {
+                 $targets += [PSCustomObject]@{
+                     Name = (Split-Path $ProfilePath -Leaf)
+                     Path = $ProfilePath
+                 }
+             }
+
+             foreach ($supportPath in $supportFiles | Select-Object -Unique) {
+                 try {
+                     Copy-Item $supportPath -Destination $DestUser -Force -ErrorAction SilentlyContinue
+                 } catch {}
+             }
+
+             foreach ($target in $targets) {
+                 $tPath = $target.Path
+                 $profileName = if ([string]::IsNullOrWhiteSpace($target.Name)) { "Profile" } else { $target.Name }
+                 $safeProfileName = ($profileName -replace '[\\/:*?"<>|]', '_')
+                 $profileDest = Join-Path $DestUser $safeProfileName
+                 if (-not (Test-Path -LiteralPath $profileDest -ErrorAction SilentlyContinue)) {
+                     New-Item -Path $profileDest -ItemType Directory -Force | Out-Null
+                 }
+
                  # SYNC STATUS CHECK
                  try {
                      $syncEmail = "Not Synced"
@@ -992,7 +1682,7 @@ function Collect-BrowserArtifacts {
 
                  if (-not (Get-Variable "syncEnabled" -ErrorAction SilentlyContinue)) { $syncEnabled = $false }
                  
-                 # Fallback for Opera/OperaGX if Preferences check failed or crashed 
+                 # Fallback for Opera/OperaGX if Preferences check failed or crashed (e.g. JSON error)
                  if ((-not $syncEnabled) -and ($BrowserName -match "Opera")) {
                       $syncDataDir = Join-Path $tPath "Sync Data"
                       if (Test-Path $syncDataDir) {
@@ -1025,6 +1715,7 @@ function Collect-BrowserArtifacts {
                          Browser = $BrowserName
                          User = $userName
                          ProfilePath = $tPath
+                         ProfileName = $profileName
                          SyncEmail = $syncEmail
                          SyncStatus = "Active"
                      }
@@ -1045,7 +1736,7 @@ function Collect-BrowserArtifacts {
                  foreach ($item in $items) {
                      $src = Join-Path $tPath $item
                      if (Test-Path $src) {
-                         Copy-Item $src -Destination $DestUser -Force -ErrorAction SilentlyContinue
+                         Copy-Item $src -Destination $profileDest -Force -ErrorAction SilentlyContinue
                      }
                  }
 
@@ -1167,6 +1858,15 @@ if ($RunAll -or $Browser) {
     $extTxt = "$FolderCreation\Browsers\Browser_Extensions.txt"
     WriteHash -FilePath $extCsv
     WriteHash -FilePath $extTxt
+
+    if (Get-Variable -Name BrowserProcessActions -Scope Script -ErrorAction SilentlyContinue) {
+        $browserActionCsv = "$FolderCreation\Browsers\Browser_Process_Actions.csv"
+        $browserActionTxt = "$FolderCreation\Browsers\Browser_Process_Actions.txt"
+        $script:BrowserProcessActions | Export-Csv -NoTypeInformation -Path $browserActionCsv -Encoding UTF8
+        $script:BrowserProcessActions | Format-Table -AutoSize | Out-File -Width 4096 -FilePath $browserActionTxt
+        WriteHash -FilePath $browserActionCsv
+        WriteHash -FilePath $browserActionTxt
+    }
 }
 
 # Task 28: RDP
@@ -1188,7 +1888,7 @@ function Get-RdpConnections{
       $rdpEvents | Format-Table -AutoSize | Out-File -Width 4096 -FilePath "$FolderCreation\EventsLogs\RDP_Connections.txt"
   }
 }
-if ($RunAll -or $Network) { Get-RdpConnections }
+if ($RunAll -or $Events) { Get-RdpConnections }
 
 # Task 29: System Config
 function Get-SystemConfig {
@@ -1228,7 +1928,7 @@ function Export-ForensicArtifactsFromVSS {
      Write-Host "Collecting VSS Artifacts (Hives, Amcache, SRUDB, User Hives)..."
      WriteLog -Level "INFO" -Message "Collecting VSS Artifacts..."
      
-     # Removed SeBackupPrivilege block as per user request 
+     # Removed SeBackupPrivilege block as per user request (deemed excessive and buggy)
      
      $VSSFolder = "$FolderCreation\VSS_Artifacts"
      New-Item -Path $VSSFolder -ItemType Directory -Force | Out-Null
@@ -1237,6 +1937,7 @@ function Export-ForensicArtifactsFromVSS {
      try {
          $class = Get-CimClass -ClassName Win32_ShadowCopy -ErrorAction SilentlyContinue
          if ($class) {
+             # Fix: Use SystemDrive instead of Hardcoded C:\
              $VolumeArg = "$($env:SystemDrive)\"
              $createdShadow = $false
              $createErr = $null
@@ -1676,9 +2377,579 @@ function Get-EmailArtifacts {
     }
     WriteLog -Level "INFO" -Message "Email Artifacts collected."
 }
-if ($RunAll -or $Cloud) { Get-EmailArtifacts }
+if ($RunAll -or $Users) { Get-EmailArtifacts }
 
-# Task 34: Forensic Catalog (JSON)
+# Task 34: Timeline (Chronos JSON)
+function Export-ChronosTimeline {
+    Write-Host "Generating Chronos timeline..." -ForegroundColor Cyan
+    WriteLog -Level "INFO" -Message "Generating Chronos-compatible timeline."
+
+    $script:ChronosTimelineEventCounter = 0
+
+    $timelineFolder = Join-Path $FolderCreation "Timeline"
+    if (-not (Test-Path -LiteralPath $timelineFolder -ErrorAction SilentlyContinue)) {
+        New-Item -Path $timelineFolder -ItemType Directory -Force | Out-Null
+    }
+
+    $events = New-Object System.Collections.Generic.List[object]
+    $observedTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    $processCsv = Join-Path $FolderCreation "ProcessInformation\ProcessList.csv"
+    if (Test-Path -LiteralPath $processCsv -ErrorAction SilentlyContinue) {
+        $procRows = @(Import-Csv -LiteralPath $processCsv -ErrorAction SilentlyContinue)
+        foreach ($row in $procRows) {
+            $timestamp = Convert-ToTimelineTimestamp $row.Proc_CreationDate
+            $description = "Process=$($row.Proc_Name) | PID=$($row.Proc_Id) | Owner=$($row.Proc_Owner) | Path=$($row.Proc_Path) | CommandLine=$($row.Proc_CommandLine)"
+            $metadata = @{
+                tags = @('powertriage','windows','ce','process','execution')
+                user = $row.Proc_Owner
+                path = $row.Proc_Path
+                commandLine = $row.Proc_CommandLine
+                ioc = $row.Proc_Path
+                activityType = 'ProcessStart'
+            }
+            Add-ChronosTimelineEvent -Events $events -Event (New-ChronosTimelineEvent -Timestamp $timestamp -Title "Process started: $($row.Proc_Name) ($($row.Proc_Id))" -Description $description -Type 'execution' -Priority 'medium' -Source 'process' -Metadata $metadata)
+        }
+    }
+
+    $connCsv = Join-Path $FolderCreation "Network\TCP_Connections.csv"
+    if (Test-Path -LiteralPath $connCsv -ErrorAction SilentlyContinue) {
+        $procNameById = @{}
+        if (Test-Path -LiteralPath $processCsv -ErrorAction SilentlyContinue) {
+            @(Import-Csv -LiteralPath $processCsv -ErrorAction SilentlyContinue) | ForEach-Object {
+                if ($_.Proc_Id) { $procNameById[[string]$_.Proc_Id] = $_.Proc_Name }
+            }
+        }
+
+        foreach ($row in @(Import-Csv -LiteralPath $connCsv -ErrorAction SilentlyContinue)) {
+            if ([string]::IsNullOrWhiteSpace($row.RemoteAddress) -or $row.RemoteAddress -in @('0.0.0.0','::')) { continue }
+            $timestamp = Convert-ToTimelineTimestamp $row.CreationTime
+            if (-not $timestamp) { $timestamp = $observedTimestamp }
+            $procName = if ($procNameById.ContainsKey([string]$row.OwningProcess)) { $procNameById[[string]$row.OwningProcess] } else { 'Unknown' }
+            $description = "Process=$procName | PID=$($row.OwningProcess) | Local=$($row.LocalAddress):$($row.LocalPort) | Remote=$($row.RemoteAddress):$($row.RemotePort) | State=$($row.State)"
+            $metadata = @{
+                tags = @('powertriage','windows','ce','network')
+                ioc = $row.RemoteAddress
+                activityType = 'NetworkConnection'
+                localAddress = $row.LocalAddress
+                localPort = $row.LocalPort
+                remoteAddress = $row.RemoteAddress
+                remotePort = $row.RemotePort
+                processId = $row.OwningProcess
+            }
+            Add-ChronosTimelineEvent -Events $events -Event (New-ChronosTimelineEvent -Timestamp $timestamp -Title "Network connection: $procName -> $($row.RemoteAddress):$($row.RemotePort)" -Description $description -Type 'network' -Priority 'medium' -Source 'network' -Metadata $metadata)
+        }
+    }
+
+    $rdpCsv = Join-Path $FolderCreation "EventsLogs\RDP_Connections.csv"
+    if (Test-Path -LiteralPath $rdpCsv -ErrorAction SilentlyContinue) {
+        foreach ($row in @(Import-Csv -LiteralPath $rdpCsv -ErrorAction SilentlyContinue)) {
+            $timestamp = Convert-ToTimelineTimestamp $row.TimeCreated
+            $description = "RDP logon observed | User=$($row.Domain)\$($row.User) | SourceIp=$($row.SourceIp)"
+            $metadata = @{
+                tags = @('powertriage','windows','ce','rdp','logon')
+                user = "$($row.Domain)\$($row.User)"
+                ioc = $row.SourceIp
+                activityType = 'RDPLogon'
+            }
+            Add-ChronosTimelineEvent -Events $events -Event (New-ChronosTimelineEvent -Timestamp $timestamp -Title "RDP connection from $($row.SourceIp)" -Description $description -Type 'logon' -Priority 'high' -Source 'rdp' -Metadata $metadata)
+        }
+    }
+
+    $autorunCsv = Join-Path $FolderCreation "System\Autoruns_Registry.csv"
+    if (Test-Path -LiteralPath $autorunCsv -ErrorAction SilentlyContinue) {
+        foreach ($row in @(Import-Csv -LiteralPath $autorunCsv -ErrorAction SilentlyContinue)) {
+            $description = "Autorun observed | Location=$($row.Location) | Name=$($row.Name) | Value=$($row.Value)"
+            $metadata = @{
+                tags = @('powertriage','windows','ce','autorun','persistence')
+                path = $row.Value
+                ioc = $row.Value
+                activityType = 'Observed'
+            }
+            Add-ChronosTimelineEvent -Events $events -Event (New-ChronosTimelineEvent -Timestamp $observedTimestamp -Title "Autorun observed: $($row.Name)" -Description $description -Type 'persistence' -Priority 'high' -Source 'autoruns' -Metadata $metadata)
+        }
+    }
+
+    $tasksCsv = Join-Path $FolderCreation "System\ScheduledTasks\ScheduledTasks.csv"
+    if (Test-Path -LiteralPath $tasksCsv -ErrorAction SilentlyContinue) {
+        foreach ($row in @(Import-Csv -LiteralPath $tasksCsv -ErrorAction SilentlyContinue)) {
+            $description = "Scheduled task observed | TaskPath=$($row.TaskPath) | State=$($row.State) | Action=$($row.Action) | Trigger=$($row.Trigger)"
+            $metadata = @{
+                tags = @('powertriage','windows','ce','scheduled_task','persistence')
+                path = "$($row.TaskPath)$($row.TaskName)"
+                ioc = $row.Action
+                activityType = 'Observed'
+            }
+            Add-ChronosTimelineEvent -Events $events -Event (New-ChronosTimelineEvent -Timestamp $observedTimestamp -Title "Scheduled task observed: $($row.TaskName)" -Description $description -Type 'persistence' -Priority 'medium' -Source 'scheduled_task' -Metadata $metadata)
+        }
+    }
+
+    $usbCsv = Join-Path $FolderCreation "System\USB_History.csv"
+    if (Test-Path -LiteralPath $usbCsv -ErrorAction SilentlyContinue) {
+        foreach ($row in @(Import-Csv -LiteralPath $usbCsv -ErrorAction SilentlyContinue)) {
+            $timestamp = Convert-ToTimelineTimestamp $row.KeyLastWriteTime
+            $description = "USB artifact observed | FriendlyName=$($row.FriendlyName) | Serial=$($row.SerialNumber) | HardwareID=$($row.HardwareID)"
+            $metadata = @{
+                tags = @('powertriage','windows','ce','usb')
+                ioc = $row.SerialNumber
+                activityType = 'RegistryLastWrite'
+            }
+            Add-ChronosTimelineEvent -Events $events -Event (New-ChronosTimelineEvent -Timestamp $timestamp -Title "USB device observed: $($row.FriendlyName)" -Description $description -Type 'artifact' -Priority 'medium' -Source 'usb' -Metadata $metadata)
+        }
+    }
+
+    Add-TimelineFileArtifactEvents -Events $events -RootPath (Join-Path $FolderCreation 'Prefetch') -Source 'prefetch' -Type 'execution' -Priority 'medium' -TitlePrefix 'Prefetch artifact'
+    Add-TimelineFileArtifactEvents -Events $events -RootPath (Join-Path $FolderCreation 'Recent_Items') -Source 'recent_items' -Type 'artifact' -Priority 'low' -TitlePrefix 'Recent item'
+    Add-TimelineFileArtifactEvents -Events $events -RootPath (Join-Path $FolderCreation 'Activities_Cache') -Source 'activities_cache' -Type 'artifact' -Priority 'low' -TitlePrefix 'Activities Cache artifact'
+    Add-TimelineFileArtifactEvents -Events $events -RootPath (Join-Path $FolderCreation 'Browsers') -Source 'browser_artifact' -Type 'browser' -Priority 'low' -TitlePrefix 'Browser artifact'
+
+    $sortedEvents = @($events | Sort-Object { [datetime]::Parse($_.timestamp) })
+    $timelineJsonPath = Join-Path $timelineFolder "PowerTriage_Timeline_Chronos.json"
+    $sortedEvents | ConvertTo-Json -Depth 10 | Out-File -FilePath $timelineJsonPath -Encoding UTF8
+    WriteHash -FilePath $timelineJsonPath
+
+    $summaryPath = Join-Path $timelineFolder "Timeline_Summary.txt"
+    $summaryLines = @(
+        "PowerTriage Timeline Summary",
+        "Host: $env:COMPUTERNAME",
+        "GeneratedUTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))",
+        "Events: $($sortedEvents.Count)",
+        "",
+        "Events by source:"
+    )
+    $summaryLines += @($sortedEvents | Group-Object { $_.source } | Sort-Object Count -Descending | ForEach-Object { "  $($_.Name): $($_.Count)" })
+    $summaryLines | Out-File -FilePath $summaryPath -Encoding UTF8
+    WriteHash -FilePath $summaryPath
+
+    WriteLog -Level "INFO" -Message "Chronos timeline generated successfully at $timelineJsonPath"
+}
+if ($Timeline) { Export-ChronosTimeline }
+
+# Task 35: Nexus Lite
+function Export-NexusLite {
+    Write-Host "Generating Nexus Lite graph..." -ForegroundColor Cyan
+    WriteLog -Level "INFO" -Message "Generating Nexus Lite graph."
+
+    $netFolder = Join-Path $FolderCreation "Network"
+    if (-not (Test-Path -LiteralPath $netFolder -ErrorAction SilentlyContinue)) {
+        New-Item -Path $netFolder -ItemType Directory -Force | Out-Null
+    }
+
+    $nodes = New-Object System.Collections.Generic.List[object]
+    $edges = New-Object System.Collections.Generic.List[object]
+    $nodeTracker = @{}
+    $edgeTracker = @{}
+
+    $hostId = "host-$env:COMPUTERNAME"
+    Add-NexusLiteNode -Nodes $nodes -Tracker $nodeTracker -Id $hostId -Type 'endpoint' -Label $env:COMPUTERNAME
+
+    $procRows = @()
+    $processCsv = Join-Path $FolderCreation "ProcessInformation\ProcessList.csv"
+    if (Test-Path -LiteralPath $processCsv -ErrorAction SilentlyContinue) {
+        $procRows = @(Import-Csv -LiteralPath $processCsv -ErrorAction SilentlyContinue)
+    }
+
+    $procMap = @{}
+    foreach ($row in $procRows) {
+        if (-not $row.Proc_Id) { continue }
+        $procId = "proc-$($row.Proc_Id)-$($row.Proc_Name)"
+        $procMap[[string]$row.Proc_Id] = @{
+            id = $procId
+            name = $row.Proc_Name
+            owner = $row.Proc_Owner
+        }
+        Add-NexusLiteNode -Nodes $nodes -Tracker $nodeTracker -Id $procId -Type 'process' -Label "$($row.Proc_Name) ($($row.Proc_Id))"
+        Add-NexusLiteEdge -Edges $edges -Tracker $edgeTracker -Edge ([ordered]@{
+            id = "edge-host-proc-$($row.Proc_Id)"
+            type = 'process_observed'
+            src = $hostId
+            dst = $procId
+            timestamp = Convert-ToTimelineTimestamp $row.Proc_CreationDate
+            note = $row.Proc_CommandLine
+        })
+
+        if ($row.Proc_Owner -and $row.Proc_Owner -ne 'N/A') {
+            $userId = "user-$($row.Proc_Owner)"
+            Add-NexusLiteNode -Nodes $nodes -Tracker $nodeTracker -Id $userId -Type 'user' -Label $row.Proc_Owner
+            Add-NexusLiteEdge -Edges $edges -Tracker $edgeTracker -Edge ([ordered]@{
+                id = "edge-user-proc-$($row.Proc_Id)"
+                type = 'owns_process'
+                src = $userId
+                dst = $procId
+            })
+        }
+    }
+
+    $connCsv = Join-Path $FolderCreation "Network\TCP_Connections.csv"
+    if (Test-Path -LiteralPath $connCsv -ErrorAction SilentlyContinue) {
+        foreach ($row in @(Import-Csv -LiteralPath $connCsv -ErrorAction SilentlyContinue)) {
+            if ([string]::IsNullOrWhiteSpace($row.RemoteAddress) -or $row.RemoteAddress -in @('0.0.0.0','::')) { continue }
+            $procInfo = if ($procMap.ContainsKey([string]$row.OwningProcess)) { $procMap[[string]$row.OwningProcess] } else { $null }
+            if ($null -eq $procInfo) {
+                $procId = "proc-$($row.OwningProcess)-unknown"
+                Add-NexusLiteNode -Nodes $nodes -Tracker $nodeTracker -Id $procId -Type 'process' -Label "Unknown ($($row.OwningProcess))"
+            } else {
+                $procId = $procInfo.id
+            }
+
+            $ipId = "ip-$($row.RemoteAddress)"
+            Add-NexusLiteNode -Nodes $nodes -Tracker $nodeTracker -Id $ipId -Type 'ip' -Label $row.RemoteAddress
+            Add-NexusLiteEdge -Edges $edges -Tracker $edgeTracker -Edge ([ordered]@{
+                id = "edge-net-$($row.OwningProcess)-$($row.RemoteAddress)-$($row.RemotePort)"
+                type = 'network_connection'
+                src = $procId
+                dst = $ipId
+                label = "$($row.State) :$($row.RemotePort)"
+                protocol = 'TCP'
+                port = $row.RemotePort
+                local_port = $row.LocalPort
+                timestamp = Convert-ToTimelineTimestamp $row.CreationTime
+            })
+        }
+    }
+
+    $rdpCsv = Join-Path $FolderCreation "EventsLogs\RDP_Connections.csv"
+    if (Test-Path -LiteralPath $rdpCsv -ErrorAction SilentlyContinue) {
+        foreach ($row in @(Import-Csv -LiteralPath $rdpCsv -ErrorAction SilentlyContinue)) {
+            if ([string]::IsNullOrWhiteSpace($row.SourceIp)) { continue }
+            $ipId = "ip-$($row.SourceIp)"
+            Add-NexusLiteNode -Nodes $nodes -Tracker $nodeTracker -Id $ipId -Type 'ip' -Label $row.SourceIp
+            Add-NexusLiteEdge -Edges $edges -Tracker $edgeTracker -Edge ([ordered]@{
+                id = "edge-rdp-$($row.SourceIp)-$($row.TimeCreated)"
+                type = 'rdp_logon'
+                src = $ipId
+                dst = $hostId
+                timestamp = Convert-ToTimelineTimestamp $row.TimeCreated
+                note = "$($row.Domain)\$($row.User)"
+            })
+        }
+    }
+
+    $graph = [PSCustomObject][ordered]@{
+        nodes = [object[]]$nodes.ToArray()
+        edges = [object[]]$edges.ToArray()
+    }
+
+    $nexusPath = Join-Path $netFolder "Nexus_Graph_Lite.json"
+    $graph | ConvertTo-Json -Depth 10 | Out-File -FilePath $nexusPath -Encoding UTF8
+    WriteHash -FilePath $nexusPath
+    WriteLog -Level "INFO" -Message "Nexus Lite graph generated successfully at $nexusPath"
+}
+if ($NexusLite) { Export-NexusLite }
+
+# Analysis: CE Findings
+function Import-CsvSafe {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -ErrorAction SilentlyContinue)) { return @() }
+    try {
+        return @(Import-Csv -LiteralPath $Path -ErrorAction Stop)
+    } catch {
+        WriteLog -Level "WARN" -Message "Failed to import CSV for analysis: $Path Error=$($_.Exception.Message)"
+        return @()
+    }
+}
+
+function Test-HighRiskPath {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    if ($Value -match '(?i)\\AppData\\|\\Temp\\|\\Downloads\\|\\Users\\Public\\|\\Recycle\.Bin\\|\\Windows\\Tasks\\|\\Windows\\System32\\spool\\drivers\\color\\') { return $true }
+    if ($Value -match '(?i)\\ProgramData\\' -and $Value -notmatch '(?i)\\ProgramData\\Microsoft\\|\\ProgramData\\NVIDIA Corporation\\|\\ProgramData\\Package Cache\\') { return $true }
+    return $false
+}
+
+function Test-SuspiciousCommand {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    return ($Value -match '(?i)EncodedCommand|FromBase64String|DownloadString|Invoke-WebRequest|Invoke-Expression|\bIEX\b|bitsadmin|certutil\s+.*(-decode|-urlcache)|mshta\s+.*(http|javascript|vbscript)|rundll32\s+.*(javascript|http|url\.dll|shell32)|regsvr32\s+.*(/i:http|scrobj\.dll)|wscript\s+.*(http|\.vbs|\.js)|cscript\s+.*(http|\.vbs|\.js)|psexec|mimikatz|rubeus')
+}
+
+function Get-ExecutablePathCandidate {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return "" }
+    $expanded = [Environment]::ExpandEnvironmentVariables($Value.Trim())
+    if ($expanded -match '^"([^"]+)"') { return $matches[1] }
+    if ($expanded -match '^(.*?\.exe)\b') { return $matches[1].Trim() }
+    if ($expanded -match '^(\S+)') { return $matches[1].Trim() }
+    return $expanded
+}
+
+function New-ForensicFinding {
+    param(
+        [System.Collections.Generic.List[object]]$Findings,
+        [string]$Severity,
+        [double]$Confidence,
+        [string]$Category,
+        [string]$Title,
+        [string]$Evidence,
+        [string]$Source,
+        [string]$SourceDetail = "",
+        [string]$RuleId = "",
+        [string]$Recommendation = "Review this artifact in context before drawing conclusions."
+    )
+
+    $Findings.Add([PSCustomObject]@{
+        id = "PTF-{0:D4}" -f ($Findings.Count + 1)
+        rule_id = $RuleId
+        severity = $Severity
+        confidence = $Confidence.ToString("0.00", [System.Globalization.CultureInfo]::InvariantCulture)
+        category = $Category
+        title = $Title
+        evidence = $Evidence
+        source_file = $Source
+        source_detail = $SourceDetail
+        source = $(if ([string]::IsNullOrWhiteSpace($SourceDetail)) { $Source } else { "$Source :: $SourceDetail" })
+        recommendation = $Recommendation
+        generated_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+    }) | Out-Null
+}
+
+function Export-ForensicFindings {
+    Write-Host "Generating forensic findings..." -ForegroundColor Yellow
+    WriteLog -Level "INFO" -Message "Generating CE forensic findings from collected artifacts."
+
+    $findingsFolder = Join-Path $FolderCreation "Findings"
+    New-Item -Path $findingsFolder -ItemType Directory -Force | Out-Null
+
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    foreach ($row in (Import-CsvSafe -Path (Join-Path $FolderCreation "System\Autoruns_Registry.csv"))) {
+        $value = [string]$row.Value
+        if ((Test-HighRiskPath -Value $value) -or (Test-SuspiciousCommand -Value $value)) {
+            New-ForensicFinding -Findings $findings -Severity "High" -Confidence 0.78 -Category "Persistence" `
+                -Title "Autorun entry points to a high-risk path or command" `
+                -Evidence "Location=$($row.Location); Name=$($row.Name); Value=$value" `
+                -Source "System\Autoruns_Registry.csv" -SourceDetail "Location=$($row.Location); Name=$($row.Name)" -RuleId "PT-CE-AUTORUN-HIGHRISK"
+        }
+    }
+
+    foreach ($row in (Import-CsvSafe -Path (Join-Path $FolderCreation "System\ScheduledTasks\ScheduledTasks.csv"))) {
+        $action = [string]$row.Action
+        $taskName = "$($row.TaskPath)$($row.TaskName)"
+        $taskExe = Get-ExecutablePathCandidate -Value $action
+        if (Test-SuspiciousCommand -Value $action) {
+            New-ForensicFinding -Findings $findings -Severity "High" -Confidence 0.82 -Category "Persistence" `
+                -Title "Scheduled task action contains suspicious command patterns" `
+                -Evidence "Task=$taskName; State=$($row.State); Action=$action" `
+                -Source "System\ScheduledTasks\ScheduledTasks.csv" -SourceDetail "Task=$taskName" -RuleId "PT-CE-TASK-SUSPICIOUS"
+        } elseif (Test-HighRiskPath -Value $taskExe) {
+            New-ForensicFinding -Findings $findings -Severity "Medium" -Confidence 0.68 -Category "Persistence" `
+                -Title "Scheduled task action points to a high-risk path" `
+                -Evidence "Task=$taskName; Executable=$taskExe; Action=$action" `
+                -Source "System\ScheduledTasks\ScheduledTasks.csv" -SourceDetail "Task=$taskName" -RuleId "PT-CE-TASK-HIGHRISK"
+        }
+    }
+
+    foreach ($row in (Import-CsvSafe -Path (Join-Path $FolderCreation "System\All_Services.csv"))) {
+        $pathName = [string]$row.Service_PathName
+        $serviceExe = Get-ExecutablePathCandidate -Value $pathName
+        if (Test-HighRiskPath -Value $serviceExe) {
+            New-ForensicFinding -Findings $findings -Severity "High" -Confidence 0.76 -Category "Persistence" `
+                -Title "Service binary path is in a high-risk location" `
+                -Evidence "Service=$($row.Service_Name); Executable=$serviceExe; Path=$pathName" `
+                -Source "System\All_Services.csv" -SourceDetail "Service=$($row.Service_Name)" -RuleId "PT-CE-SERVICE-HIGHRISK"
+        }
+    }
+
+    foreach ($row in (Import-CsvSafe -Path (Join-Path $FolderCreation "ProcessInformation\ProcessList.csv"))) {
+        $cmd = [string]$row.Proc_CommandLine
+        $procPath = [string]$row.Proc_Path
+        if (Test-SuspiciousCommand -Value $cmd) {
+            New-ForensicFinding -Findings $findings -Severity "High" -Confidence 0.80 -Category "Execution" `
+                -Title "Running process command line contains suspicious patterns" `
+                -Evidence "Process=$($row.Proc_Name); PID=$($row.Proc_Id); CommandLine=$cmd" `
+                -Source "ProcessInformation\ProcessList.csv" -SourceDetail "PID=$($row.Proc_Id); Process=$($row.Proc_Name)" -RuleId "PT-CE-PROCESS-SUSPICIOUS"
+        } elseif (Test-HighRiskPath -Value $procPath) {
+            New-ForensicFinding -Findings $findings -Severity "Medium" -Confidence 0.66 -Category "Execution" `
+                -Title "Process runs from a high-risk location" `
+                -Evidence "Process=$($row.Proc_Name); PID=$($row.Proc_Id); Path=$procPath" `
+                -Source "ProcessInformation\ProcessList.csv" -SourceDetail "PID=$($row.Proc_Id); Process=$($row.Proc_Name)" -RuleId "PT-CE-PROCESS-HIGHRISK"
+        }
+    }
+
+    foreach ($row in (Import-CsvSafe -Path (Join-Path $FolderCreation "Network\TCP_Connections.csv"))) {
+        $remote = [string]$row.RemoteAddress
+        if ($row.State -eq "Established" -and $remote -and $remote -notmatch '^(127\.|::1|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)') {
+            New-ForensicFinding -Findings $findings -Severity "Low" -Confidence 0.48 -Category "Network" `
+                -Title "Established external TCP connection observed" `
+                -Evidence "Remote=${remote}:$($row.RemotePort); Local=$($row.LocalAddress):$($row.LocalPort); PID=$($row.OwningProcess)" `
+                -Source "Network\TCP_Connections.csv" -SourceDetail "Remote=${remote}:$($row.RemotePort); PID=$($row.OwningProcess)" -RuleId "PT-CE-NET-EXTERNAL"
+        }
+    }
+
+    $csvPath = Join-Path $findingsFolder "Findings.csv"
+    $jsonlPath = Join-Path $findingsFolder "Findings.jsonl"
+    $txtPath = Join-Path $findingsFolder "Findings_Summary.txt"
+
+    $findings | Export-Csv -NoTypeInformation -Path $csvPath -Encoding UTF8
+    $findings | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 5 } | Out-File -FilePath $jsonlPath -Encoding UTF8
+
+    $summary = @()
+    $summary += "PowerTriage CE forensic findings"
+    $summary += "Generated: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))"
+    $summary += "Total findings: $($findings.Count)"
+    foreach ($sev in @("High", "Medium", "Low")) {
+        $summary += "$sev`: $(($findings | Where-Object severity -eq $sev).Count)"
+    }
+    $summary += ""
+    $summary += "These findings are triage leads and require analyst review."
+    $summary | Out-File -FilePath $txtPath -Encoding UTF8
+
+    WriteHash -FilePath $csvPath
+    WriteHash -FilePath $jsonlPath
+    WriteHash -FilePath $txtPath
+    WriteLog -Level "INFO" -Message "CE forensic findings generated. Count=$($findings.Count)"
+}
+if ($GenerateFindings) { Export-ForensicFindings }
+
+function Export-ExecutiveReport {
+    Write-Host "Generating Executive HTML Report..." -ForegroundColor Yellow
+    WriteLog -Level "INFO" -Message "Generating CE Executive HTML report."
+
+    $sysInfo = Get-ComputerInfo | Select-Object OsName, OsVersion, OsArchitecture, CsName, TimeZone, WindowsVersion
+    $ipV4 = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -notmatch "Loopback" }).IPAddress -join ", "
+    $conns = Get-NetTCPConnection -ErrorAction SilentlyContinue
+    $totalConns = @($conns).Count
+    $established = (@($conns | Where-Object State -eq "Established")).Count
+    $listening = (@($conns | Where-Object State -eq "Listen")).Count
+    $topIPs = @($conns | Where-Object { $_.State -eq "Established" -and $_.RemoteAddress -notmatch "^127\.|^::1" } | Group-Object RemoteAddress | Sort-Object Count -Descending | Select-Object -First 5 Name, Count)
+    $procCount = (Get-Process -ErrorAction SilentlyContinue).Count
+
+    $findings = Import-CsvSafe -Path (Join-Path $FolderCreation "Findings\Findings.csv")
+    $highFindings = (@($findings | Where-Object severity -eq "High")).Count
+    $mediumFindings = (@($findings | Where-Object severity -eq "Medium")).Count
+    $lowFindings = (@($findings | Where-Object severity -eq "Low")).Count
+    $topFindings = @($findings | Sort-Object @{Expression={
+        switch ($_.severity) {
+            "High" { 1 }
+            "Medium" { 2 }
+            "Low" { 3 }
+            default { 4 }
+        }
+    }}, @{Expression="confidence"; Descending=$true} | Select-Object -First 10)
+
+    $timelinePath = Join-Path $FolderCreation "Timeline\PowerTriage_Timeline_Chronos.json"
+    $timelineCount = 0
+    if (Test-Path -LiteralPath $timelinePath) {
+        try { $timelineCount = @((Get-Content -LiteralPath $timelinePath -Raw | ConvertFrom-Json)).Count } catch {}
+    }
+
+    $nexusPath = Join-Path $FolderCreation "Network\Nexus_Graph_Lite.json"
+    $nexusNodeCount = 0
+    $nexusEdgeCount = 0
+    if (Test-Path -LiteralPath $nexusPath) {
+        try {
+            $nexusGraph = Get-Content -LiteralPath $nexusPath -Raw | ConvertFrom-Json
+            $nexusNodeCount = @($nexusGraph.nodes).Count
+            $nexusEdgeCount = @($nexusGraph.edges).Count
+        } catch {}
+    }
+
+    $findingRows = if ($topFindings.Count -gt 0) {
+        ($topFindings | ForEach-Object {
+            $sev = [System.Net.WebUtility]::HtmlEncode($_.severity)
+            $title = [System.Net.WebUtility]::HtmlEncode($_.title)
+            $category = [System.Net.WebUtility]::HtmlEncode($_.category)
+            $source = [System.Net.WebUtility]::HtmlEncode($_.source)
+            "<tr><td><span class='sev-$($sev.ToLower())'>$sev</span></td><td>$category</td><td>$title</td><td>$source</td></tr>"
+        }) -join "`n"
+    } else {
+        "<tr><td colspan='4'>No findings were generated from the available artifacts.</td></tr>"
+    }
+
+    $html = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PowerTriage CE - Executive Summary</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }
+        h1, h2, h3 { color: #007acc; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .logo { font-size: 24px; font-weight: bold; color: #007acc; }
+        .timestamp { color: #888; }
+        .card-container { display: flex; flex-wrap: wrap; gap: 20px; }
+        .card { background-color: #252526; border: 1px solid #333; border-radius: 5px; padding: 15px; flex: 1; min-width: 300px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .card h3 { margin-top: 0; color: #4ec9b0; border-bottom: none; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #333; vertical-align: top; }
+        th { color: #569cd6; }
+        .sev-high { color: #ff5c5c; font-weight: bold; }
+        .sev-medium { color: #ffb454; font-weight: bold; }
+        .sev-low { color: #9cdcfe; font-weight: bold; }
+        .footer { margin-top: 50px; text-align: center; color: #666; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">PowerTriage CE</div>
+        <div class="timestamp">Generated: $((Get-Date).ToString("yyyy-MM-dd HH:mm:ss"))</div>
+    </div>
+
+    <div class="card-container">
+        <div class="card">
+            <h3>System Information</h3>
+            <table>
+                <tr><th>Hostname</th><td>$($sysInfo.CsName)</td></tr>
+                <tr><th>OS</th><td>$($sysInfo.OsName) ($($sysInfo.OsArchitecture))</td></tr>
+                <tr><th>Version</th><td>$($sysInfo.WindowsVersion)</td></tr>
+                <tr><th>IP Address(es)</th><td>$ipV4</td></tr>
+                <tr><th>Timezone</th><td>$($sysInfo.TimeZone)</td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3>Triage Summary</h3>
+            <table>
+                <tr><th>Running Processes</th><td>$procCount</td></tr>
+                <tr><th>Total Connections</th><td>$totalConns</td></tr>
+                <tr><th>Established</th><td>$established</td></tr>
+                <tr><th>Listening Ports</th><td>$listening</td></tr>
+                <tr><th>Findings</th><td>High: $highFindings | Medium: $mediumFindings | Low: $lowFindings</td></tr>
+                <tr><th>Timeline Events</th><td>$timelineCount</td></tr>
+                <tr><th>Nexus Lite</th><td>Nodes: $nexusNodeCount | Edges: $nexusEdgeCount</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <br>
+
+    <div class="card-container">
+        <div class="card">
+            <h3>Top Remote IPs (Established)</h3>
+            <table>
+                <tr><th>IP Address</th><th>Count</th></tr>
+                $($topIPs | ForEach-Object { "<tr><td>$($_.Name)</td><td>$($_.Count)</td></tr>" } | Out-String)
+            </table>
+        </div>
+        <div class="card">
+            <h3>Forensic Findings</h3>
+            <table>
+                <tr><th>Severity</th><th>Category</th><th>Finding</th><th>Source</th></tr>
+                $findingRows
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">
+        Generated by PowerTriage CE | <a href="https://powerforensics.es" style="color: #666;">powerforensics.es</a>
+    </div>
+</body>
+</html>
+"@
+
+    $reportPath = Join-Path $FolderCreation "Executive_Report.html"
+    $html | Out-File -FilePath $reportPath -Encoding UTF8
+    WriteHash -FilePath $reportPath
+    WriteLog -Level "INFO" -Message "CE Executive Report generated: $reportPath"
+}
+if ($GenerateExecutiveReport) { Export-ExecutiveReport }
+
+# Task 36: Forensic Catalog (JSON)
 function Export-ForensicCatalog {
     Write-Host "Generating Forensic Catalog (JSON)..."
     WriteLog -Level "INFO" -Message "Generating Forensic Catalog (JSON)..."
@@ -1716,6 +2987,11 @@ function Export-ForensicCatalog {
             version = $Version
             edition = "Standard (OpenSource)"
             system_info = $sysInfo
+            browser_collection_mode = $BrowserCollectionMode
+            output_retention = $OutputRetention
+            timeline_enabled = [bool]$Timeline
+            nexus_lite_enabled = [bool]$NexusLite
+            packet_capture = $null
         }
         artifacts = @{
             user = @()
@@ -1777,6 +3053,15 @@ function Export-ForensicCatalog {
         $catalog.artifacts[$category] += $item
     }
 
+    $packetCaptureReportPath = Join-Path $FolderCreation "Network\PacketCapture\PacketCapture_Report.json"
+    if (Test-Path -LiteralPath $packetCaptureReportPath) {
+        try {
+            $catalog.metadata.packet_capture = Get-Content -Path $packetCaptureReportPath -Raw | ConvertFrom-Json
+        } catch {
+            WriteLog -Level "WARN" -Message "Failed to load PacketCapture_Report.json: $($_.Exception.Message)"
+        }
+    }
+
     $json = $catalog | ConvertTo-Json -Depth 10
     $json | Out-File -FilePath "$FolderCreation\ForensicCatalog.json" -Encoding UTF8
     WriteLog -Level "INFO" -Message "Forensic Catalog generated."
@@ -1785,40 +3070,104 @@ Export-ForensicCatalog
 
 # Task 35: Zip
 function Zip-Results {
+   param(
+       [string]$SourceDirectory,
+       [string]$ZipPath
+   )
+
+   $result = [PSCustomObject]@{
+       Requested = $true
+       Created = $false
+       Path = $ZipPath
+       Error = $null
+   }
+
    Write-Host "Running task 35 (Final)" -ForegroundColor Yellow
-   Write-Host "Write results to $FolderCreation.zip..."
-   
+   Write-Host "Write results to $ZipPath..."
+
    Write-Progress -Activity "Zipping Results" -Status "Compressing..." -PercentComplete 50
-   
+
    # Give file system a moment to release handles
    Start-Sleep -Seconds 2
-   
+
    try {
        Add-Type -AssemblyName System.IO.Compression.FileSystem
-       $zipPath = "$FolderCreation.zip"
-       if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-       [System.IO.Compression.ZipFile]::CreateFromDirectory($FolderCreation, $zipPath)
+       if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
+       [System.IO.Compression.ZipFile]::CreateFromDirectory($SourceDirectory, $ZipPath)
+       $result.Created = (Test-Path -LiteralPath $ZipPath)
    } catch {
        Write-Warning "Native Zip failed, falling back to Compress-Archive. Error: $_"
-       Compress-Archive -Force -LiteralPath $FolderCreation -DestinationPath "$FolderCreation.zip"
+       try {
+           Compress-Archive -Force -LiteralPath $SourceDirectory -DestinationPath $ZipPath
+           $result.Created = (Test-Path -LiteralPath $ZipPath)
+       } catch {
+           $result.Error = $_.Exception.Message
+       }
    }
-   
+
    Write-Progress -Activity "Zipping Results" -Completed
+
+   if (-not $result.Created -and -not $result.Error) {
+       $result.Error = "ZIP output was requested but not created."
+   }
+
+   return $result
 }
-Zip-Results
+
+$zipPath = "$FolderCreation.zip"
+$zipResult = [PSCustomObject]@{
+    Requested = $false
+    Created = $false
+    Path = $zipPath
+    Error = $null
+}
+
+if ($OutputRetention -eq 'DirectoryOnly') {
+    Write-Host "Running task 35 (Final)" -ForegroundColor Yellow
+    Write-Host "Skipping ZIP generation because -OutputRetention DirectoryOnly was selected."
+    WriteLog -Level "INFO" -Message "Skipping ZIP generation because OutputRetention is DirectoryOnly."
+} else {
+    $zipResult = Zip-Results -SourceDirectory $FolderCreation -ZipPath $zipPath
+    if ($zipResult.Created) {
+        WriteLog -Level "INFO" -Message "ZIP package created successfully at $($zipResult.Path)"
+    } else {
+        WriteLog -Level "WARN" -Message "ZIP package was requested but not created. Error: $($zipResult.Error)"
+    }
+}
 
 # Calculate Final ZIP Hash for Chain of Custody
 $FinalHash = "N/A"
-if (Test-Path "$FolderCreation.zip") {
-    $FinalHash = (Get-FileHash -Path "$FolderCreation.zip" -Algorithm SHA256).Hash
+if ($zipResult.Created -and (Test-Path -LiteralPath $zipPath)) {
+    $FinalHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
 }
+
+$DirectoryRemoved = $false
+if ($OutputRetention -eq 'ZipOnly') {
+    if ($zipResult.Created -and (Test-Path -LiteralPath $zipPath)) {
+        try {
+            WriteLog -Level "INFO" -Message "Removing uncompressed output directory because OutputRetention is ZipOnly."
+            Remove-Item -LiteralPath $FolderCreation -Recurse -Force -ErrorAction Stop
+            $DirectoryRemoved = $true
+        } catch {
+            Write-Warning "ZIP was created but the directory could not be removed. Keeping directory. Error: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Warning "ZipOnly was requested, but ZIP creation failed. Keeping the directory output."
+    }
+}
+
+$DirectoryStatus = if ($DirectoryRemoved) { "Removed after ZIP creation" } else { $FolderCreation }
+$ZipStatus = if ($zipResult.Created) { $zipPath } elseif ($OutputRetention -eq 'DirectoryOnly') { "Not requested" } else { "Not created" }
+$LogStatus = if ($DirectoryRemoved) { "Removed with directory after ZIP creation" } else { $LogFile }
 
 Write-Host "==============================================================" 
 Write-Host "                              All tasks done                 " -ForegroundColor Yellow 
 Write-Host "                                                              " 
-Write-Host "                              Output: $FolderCreation.zip     " -ForegroundColor Green 
+Write-Host "                              OutputRetention: $OutputRetention" -ForegroundColor Green
+Write-Host "                              Directory: $DirectoryStatus" -ForegroundColor Green
+Write-Host "                              ZIP: $ZipStatus" -ForegroundColor Green
 Write-Host "                              ZIP SHA256: $FinalHash          " -ForegroundColor Cyan
-Write-Host "                              Log: $LogFile                   " -ForegroundColor Gray 
+Write-Host "                              Log: $LogStatus                 " -ForegroundColor Gray 
 Write-Host "" 
 Write-Host "                   Good luck in your investigation :)" -ForegroundColor Gray 
 Write-Host "" 
@@ -1826,4 +3175,3 @@ Write-Host " PowerTriage is a PowerForensics tool " -ForegroundColor Green
 Write-Host " PowerForensics - https://powerforensics.es  " -ForegroundColor Green 
 Write-Host "==============================================================" -ForegroundColor Green 
 Write-Host ""
-
