@@ -1,105 +1,334 @@
-# PowerTriage (Linux Edition)
+# PowerTriage Linux
 
-**PowerTriage Linux** is a pure Bash script designed for **Incident Response (IR)** and **Forensic Triage** on compromised Linux systems. It collects comprehensive artifacts using standard system tools, requiring **no external dependencies** or binary installation, making it ideal for **Live Response** on servers, desktops, and containers.
+PowerTriage Linux is a Bash-based live response and forensic triage collector for Linux systems.
 
-> **Note:** This tool is part of the **PowerForensics** ecosystem.
+It is designed for DFIR work on servers, cloud workloads, containers, and production systems where the analyst needs fast evidence collection with a low dependency footprint.
 
-## 🚀 Features
+PowerTriage Linux is part of the PowerForensics ecosystem.
 
-PowerTriage Linux is built to be robust, fast, and safe (`set -e` protected), capable of running on minimal environments (like Alpine or minimal Cloud Images) as well as full distributions.
+For offline Windows collection from a Linux forensic host, see `PowerTriage_ProLinux.sh` and `README_PRO_LINUX.md`. That draft workflow also supports metadata-only `FileTree` export for later review and processing.
 
-*   **System Info:** OS Kernel, Release, Hostname, Timezone, Uptime, CPU/Mem info.
-*   **User Activity:** 
-    *   **Current Sessions:** `w`, `who`, `last`, `lastb`.
-    *   **History Files:** Automatically extracts `.bash_history`, `.zsh_history`, `.viminfo`, `.mysql_history`, etc., for **all users** on the system.
-    *   **Privileges:** `/etc/sudoers` parsing, sudo group members.
-    *   **Accounts:** Analysis of `/etc/passwd` and `/etc/shadow` (status only) to identify passwordless or locked accounts.
-*   **Network:** 
-    *   Active Connections (`ss` or `netstat`) with process mapping.
-    *   Open Ports (Listening services).
-    *   **DNS & Hosts:** `/etc/resolv.conf`, `/etc/hosts` to detect hijacking.
-    *   Interface configuration (`ip addr`, `ifconfig`).
-*   **Processes & Persistence:** 
-    *   Full process list (`ps auxef`).
-    *   **Cron Jobs:** System-wide (`/etc/cron*`) and user-specific crontabs (`/var/spool/cron`).
-    *   **Systemd:** List of active services and timers.
-    *   **Open Files:** `lsof` dump (if available) for network/file correlation.
-*   **Software & Containers:**
-    *   **Containers:** Auto-detection of **Docker**, **Podman**, and **Crictl** (K8s). Lists running containers, images, and networks.
-    *   **Packages:** Inventory of installed software via `dpkg` (Debian/Ubuntu), `rpm` (RHEL/CentOS), or `apk` (Alpine).
-*   **File System:** 
-    *   **Timeline:** Generates a bodyfile-like timeline of `/etc`, `/tmp`, `/var/www`, `/home` (optional, time-consuming).
-    *   **SSH Keys:** Collects `authorized_keys` and `known_hosts` for lateral movement analysis.
+## What's New
 
-## 📋 Requirements
+Compared with the previously published Linux collector, the current version adds:
 
-*   **OS:** Most Linux distributions (Debian, Ubuntu, RHEL, CentOS, Fedora, Alpine, Kali, Arch).
-*   **Shell:** Bash 4.0+.
-*   **Privileges:** **Root** (sudo) is required to access sensitive artifacts (shadow, other users' history, system logs).
+- optional AVML memory acquisition with authorization and download auditing
+- local account, shadow status, sudoers, and privileged-group review
+- Docker, Podman, and CRI/Kubernetes inventory
+- installed package inventory for Debian, RPM-based, and Alpine systems
+- DNS, host resolution, routing, neighbor, listener, and firewall collection
+- advanced persistence checks for recent systemd units, path units, `ld.so.preload`, package integrity, `memfd`, shell profiles, and recently modified web scripts
+- dedicated Apache/httpd acquisition for processes, services, virtual hosts, modules, configurations, logs, and web roots
+- dedicated Java and Tomcat acquisition for processes, services, environment files, configurations, logs, and deployed web applications
+- optional metadata-only `FileTree` export with configurable roots, depth, and entry limits
+- fast, strict, and non-interactive execution modes
+- structured artifact inventory, SHA256 hashing, execution logs, and error logs
 
-## 🛠️ Usage
+## Positioning
 
-Make the script executable and run it as root.
+PowerTriage Linux is not intended to be a full Unix artifact framework or a direct replacement for tools such as UAC. Its goal is different:
+
+- provide practical first-pass Linux triage
+- run with standard system tooling where possible
+- collect high-value artifacts quickly
+- produce outputs that are easy to review, archive, and import into PowerForensics workflows
+- keep the collector understandable and portable
+
+Future work will move the collector toward a more modular structure while keeping this practical triage focus.
+
+## Main Capabilities
+
+### System Context
+
+- Hostname, kernel, uptime, users, groups, and basic OS information.
+- Local account and privilege review using `/etc/passwd`, `/etc/group`, `/etc/shadow`, `/etc/sudoers`, and sudo/wheel/adm groups.
+- Installed package inventory using `dpkg`, `rpm`, or `apk` when available.
+
+### Memory
+
+- Optional RAM acquisition through AVML.
+- In interactive mode, the script asks for authorization before downloading AVML.
+- In `--auto` mode, AVML download is treated as authorized and recorded in the acquisition log.
+- In strict mode, external download behavior is disabled.
+- The AVML decision is documented in `00_avml_download_documentation.txt`.
+
+### Processes and Open Files
+
+- Process tree and full process listing.
+- Environment-rich process output through `ps`.
+- Deleted executable references under `/proc`.
+- Open file inventory through `lsof` when available.
+
+### Network
+
+- Interfaces, routes, neighbors, listening sockets, and active network services.
+- DNS and host resolution files:
+  - `/etc/resolv.conf`
+  - `/etc/hosts`
+  - `/etc/nsswitch.conf`
+- Firewall state from `iptables-save`, `nft`, and `ufw` when present.
+
+### Persistence
+
+- Cron and AT-related artifacts.
+- Init scripts and `rc.local`.
+- Systemd services and timers.
+- Kernel modules.
+- SSH server configuration and user `authorized_keys` paths.
+
+### Advanced Persistence and Intrusion Clues
+
+- Recently modified systemd units.
+- Systemd path units.
+- `/etc/ld.so.preload`.
+- Basic package integrity checks for core utilities.
+- `memfd` usage for potential fileless execution.
+- Shell startup files such as `.bashrc`, `.profile`, and `.zshrc`.
+- Quick scan for recently modified web script files in common web roots.
+
+### Containers
+
+- Docker containers, images, and networks.
+- Podman containers, images, and networks.
+- CRI/Kubernetes visibility through `crictl` when available.
+
+### Web Server Artifacts
+
+PowerTriage Linux includes first-pass collection for common web application incident response scenarios.
+
+Apache collection includes:
+
+- Apache/httpd processes.
+- Listeners on ports 80 and 443.
+- `apache2` and `httpd` systemd service status.
+- Apache version and build information.
+- Virtual host listing through `apache2ctl`, `apachectl`, or `httpd`.
+- Loaded modules.
+- Configuration paths such as:
+  - `/etc/apache2`
+  - `/etc/httpd`
+  - `/usr/local/apache2/conf`
+  - `/usr/local/etc/apache24`
+- Logs from:
+  - `/var/log/apache2`
+  - `/var/log/httpd`
+  - `/usr/local/apache2/logs`
+  - `/usr/local/var/log/apache2`
+- Web roots such as `/var/www` and `/srv/www`.
+
+Tomcat and Java collection includes:
+
+- Java presence and `java -version`.
+- Java home candidates under `/usr/lib/jvm`, `/opt/java`, `/opt/jdk`, and `/usr/java`.
+- Tomcat/Catalina processes.
+- Common Tomcat listeners on ports 8080, 8005, 8009, and 8443.
+- Tomcat-related systemd services.
+- Tomcat environment files under `/etc/default` and `/etc/sysconfig`.
+- Configuration and runtime paths such as:
+  - `/etc/tomcat*`
+  - `/usr/share/tomcat*`
+  - `/opt/tomcat`
+  - `/opt/apache-tomcat`
+  - `/opt/apache-tomcat-*`
+- Logs from:
+  - `/var/log/tomcat*`
+  - `/opt/tomcat/logs`
+  - `/opt/apache-tomcat/logs`
+  - `/opt/apache-tomcat-*/logs`
+- Webapps inventory in fast mode, or webapps copy in full mode.
+
+### Filesystem and Timeline
+
+- Filesystem listing with `find`.
+- Optional metadata-only `FileTree` export for filesystem navigation and later processing.
+- MAC timestamp timeline exported to `timeline_file.csv`.
+- In fast mode, filesystem and timeline scope are reduced to high-value paths.
+
+### Archives and Hashes
+
+- Optional archive of `/home`, `/root`, and `/var/log`.
+- Recent systemd journal export when `journalctl` is available.
+- SHA256 hashes for collected evidence.
+- `ForensicCatalog.json` as a structured inventory of collected evidence.
+
+## Requirements
+
+- Linux host with Bash.
+- Root privileges are required by the current collector.
+- Standard Unix tools such as `ps`, `find`, `tar`, `sha256sum`, `ss`, and `cp`.
+- Optional tools improve coverage:
+  - `lsof`
+  - `pstree`
+  - `journalctl`
+  - `iptables-save`
+  - `nft`
+  - `ufw`
+  - `docker`
+  - `podman`
+  - `crictl`
+  - `apache2ctl`, `apachectl`, or `httpd`
+  - `java`
+  - `systemctl`
+
+## Usage
+
+Make the script executable:
 
 ```bash
-chmod +x PF_Linux.sh
-sudo ./PF_Linux.sh
+chmod +x PowerTriage_Linux.sh
 ```
 
-### Interactive Mode
-By default, the script asks for confirmation before starting and allows you to choose artifact categories.
+Run interactively:
 
-### Automated / Fast Mode
-Ideal for scripting or when speed is crucial.
-
-*   `--auto`: Skips confirmation prompts (Non-interactive).
-*   `--fast`: Skips time-consuming tasks (Timeline, full file listing, large log archiving).
-*   `--no-memory`: Skips memory dump (Lime) if integrated.
-*   `--no-tar`: Skips final compression (leaves raw directory).
-
-**Example:**
 ```bash
-sudo ./PF_Linux.sh --auto --fast
+sudo ./PowerTriage_Linux.sh
 ```
 
-## 📂 Output Structure
+Interactive mode asks where the evidence should be written: external storage, `/dev/shm`, or the current directory. It does not present a module-selection menu; the collection scope is controlled through command-line parameters.
 
-The script creates a directory named `powertriage_linux_HOSTNAME_TIMESTAMP` (compressed as `.tar.gz` at the end) containing:
+Run in non-interactive fast mode:
 
-| File/Folder | Description |
-| :--- | :--- |
-| `user_history_files/` | **User Activity:** History files (`.bash_history`, `.zsh_history`, etc.) per user. |
-| `00_avml_download_documentation.txt` | **Audit:** Documentation of AVML download decision (if applicable). |
-| `00_metadata_pre_triage.txt` | **Chain of Custody:** Pre-triage timestamps and metadata. |
-| `containers.txt` | **Containers:** Docker, Podman, and Crictl (K8s) status/images. |
-| `directory_and_files.txt` | **Filesystem:** Full listing of files (excluding proc/sys/dev). |
-| `ForensicCatalog.json` | **Integration:** JSON catalog for PowerForensics Analysis Platform. |
-| `hashes.txt` | **Chain of Custody:** SHA256 hashes of all collected evidence. |
-| `home.tar.gz` | **Archive:** Compressed `/home` directory (Full Scope only). |
-| `installed_packages.txt` | **Software:** Inventory from dpkg, rpm, or apk. |
-| `logs.tar.gz` | **Archive:** Compressed `/var/log` directory. |
-| `memory.mem` | **Memory:** RAM dump via AVML (if enabled). |
-| `network_info.txt` | **Network:** Interfaces, Ports, Routes, ARP, DNS (`resolv.conf`, `hosts`). |
-| `open_files_lsof.txt` | **Processes:** Open files listing (requires `lsof`). |
-| `persistence.txt` | **Persistence:** Cron, Init, Systemd, SSH keys, Kernel modules. |
-| `powertriage.log` | **Log:** Detailed execution log. |
-| `powertriage_errors.log` | **Log:** Execution errors and warnings. |
-| `processes.txt` | **Processes:** Process tree (`pstree`), full list (`ps`), and executable links. |
-| `root.tar.gz` | **Archive:** Compressed `/root` directory. |
-| `system_info.txt` | **System:** OS details, Uptime, Users, Groups, Crontab. |
-| `timeline_file.csv` | **Timeline:** Filesystem timeline (MACB timestamps). |
-| `users_local.txt` | **Users:** Shadow status, Sudoers configuration, Wheel group. |
+```bash
+sudo ./PowerTriage_Linux.sh --auto --fast
+```
 
-**Final Delivery:** The folder is automatically compressed into a **TAR.GZ** file (unless `--no-tar` is used).
+`--auto` runs without prompts and uses the current directory as the output base. Because memory collection is enabled by default, use `--no-memory` when automatic AVML download and execution has not been explicitly authorized.
 
-## 👤 Author
+Run in strict mode:
 
-**Jesús D. Angosto** (@jdangosto)
-*   🐦 Twitter/X: [@jdangosto](https://twitter.com/jdangosto)
-*   🐙 GitHub: [jdangosto](https://github.com/jdangosto)
-*   🌐 Blog: [DFIR Spain](https://www.dfirspain.es)
-*   🛡️ Project Web: [PowerForensics](https://powerforensics.es)
+```bash
+sudo ./PowerTriage_Linux.sh --strict --fast
+```
 
-## ⚠️ Disclaimer
+Skip specific heavy or optional steps:
 
-This tool is provided "as is" without warranty of any kind. Use it at your own risk. The author is not responsible for any damage caused by the use or misuse of this tool. Always test in a controlled environment before using in production.
+```bash
+sudo ./PowerTriage_Linux.sh --auto --no-memory --no-timeline --no-lsof
+```
+
+Skip directory archives and the journal export stage:
+
+```bash
+sudo ./PowerTriage_Linux.sh --auto --no-tar
+```
+
+Export a navigable metadata-only filesystem tree:
+
+```bash
+sudo ./PowerTriage_Linux.sh --auto --filetree
+```
+
+Limit FileTree collection to selected roots:
+
+```bash
+sudo ./PowerTriage_Linux.sh --auto --fast --filetree --filetree-root=/etc --filetree-root=/var/log
+```
+
+## Parameters
+
+| Parameter | Description |
+|---|---|
+| `--interactive` | Interactive mode. This is the default. |
+| `--auto` | Non-interactive execution. |
+| `--strict` | Conservative non-interactive mode. Disables external AVML download behavior. |
+| `--fast` | Reduces expensive filesystem, timeline, and archive operations. |
+| `--no-memory` | Skips memory acquisition. |
+| `--no-timeline` | Skips filesystem timeline generation. |
+| `--no-tar` | Skips creation of the `/home`, `/root`, and `/var/log` archives and the journal export stage. |
+| `--no-lsof` | Skips open file collection through `lsof`. |
+| `--filetree` | Exports a metadata-only filesystem tree index. |
+| `--filetree-root=<path>` | Adds a custom FileTree root. Repeatable. |
+| `--filetree-max-depth=<n>` | Maximum FileTree traversal depth. |
+| `--filetree-max-entries=<n>` | Maximum FileTree entries. |
+| `--help`, `-h` | Displays command-line help. |
+
+## Output
+
+The script creates a directory named:
+
+```text
+powertriage_linux_<hostname>_<UTC timestamp>
+```
+
+Typical output includes:
+
+| Path | Description |
+|---|---|
+| `00_metadata_pre_triage.txt` | Pre-triage metadata and timestamps. |
+| `00_avml_download_documentation.txt` | AVML download and authorization context, when applicable. |
+| `powertriage.log` | Execution log. |
+| `powertriage_errors.log` | Errors and warnings. |
+| `system_info.txt` | Host, OS, users, groups, and general system context. |
+| `users_local.txt` | Local user, shadow status, sudoers, and privileged groups. |
+| `processes.txt` | Process tree, process list, and deleted executable references. |
+| `open_files_lsof.txt` | Open files from `lsof`, when available. |
+| `network_info.txt` | Network, DNS, routes, neighbors, listeners, and firewall state. |
+| `containers.txt` | Docker, Podman, and CRI/Kubernetes inventory. |
+| `installed_packages.txt` | Package inventory. |
+| `user_history_files/` | Shell and application history files by user. |
+| `persistence.txt` | Cron, init, systemd, SSH, and kernel module persistence artifacts. |
+| `advanced_persistence.txt` | Rootkit, fileless, shell profile, and recent web script checks. |
+| `apache_artifacts/` | Apache inventory, configs, logs, and web root artifacts. |
+| `tomcat_artifacts/` | Java/Tomcat inventory, configs, logs, and webapps artifacts. |
+| `directory_and_files.txt` | Filesystem listing. |
+| `FileSystem/FileTree.jsonl` | Metadata-only filesystem tree index. |
+| `FileSystem/FileTree_Summary.json` | FileTree generation summary. |
+| `FileSystem/FileTree_Errors.txt` | FileTree traversal errors and skipped paths. |
+| `timeline_file.csv` | Filesystem MAC timestamp timeline. |
+| `journal_recent.txt` | Recent systemd journal output. |
+| `journal_errors.txt` | High-priority journal errors from current boot. |
+| `home.tar.gz` | `/home` archive, except in fast mode or when unavailable. |
+| `root.tar.gz` | `/root` archive. |
+| `logs.tar.gz` | `/var/log` archive. |
+| `memory.mem` | Memory image, when AVML is available and enabled. |
+| `hashes.txt` | SHA256 hashes of collected files. |
+| `ForensicCatalog.json` | Structured inventory of collected artifacts and hashes. |
+
+The collector keeps the evidence directory available for direct review. It does not currently create a single final archive containing the complete acquisition.
+
+## Fast Mode Behavior
+
+`--fast` is intended for first-pass triage when time, disk space, or operational impact matters.
+
+In fast mode:
+
+- broad filesystem listing is limited to high-value paths
+- default FileTree roots are limited to `/etc`, `/var/log`, and `/root`
+- timeline generation is limited to high-value paths
+- `/home` archive is skipped
+- Apache web roots are listed selectively instead of copied wholesale
+- Apache logs are limited to recent access/error/log files
+- Tomcat webapps are listed selectively instead of copied wholesale
+- Tomcat logs are limited to recent log-like files
+
+## Forensic Notes
+
+- Run from trusted media where possible.
+- Prefer writing output to external storage or a prepared evidence mount.
+- Any live response collection changes system state to some degree.
+- Memory acquisition and external binary download require explicit authorization in real cases.
+- `ForensicCatalog.json` and `FileTree.jsonl` are complementary:
+  - the catalog tracks collected artifacts
+  - the FileTree index provides a navigable directory view
+- Review `powertriage_errors.log` after execution to understand skipped paths or unavailable tools.
+
+## Roadmap
+
+Planned direction:
+
+- modularize collection areas without losing Bash portability
+- introduce clearer module inventory and per-module summaries
+- improve web server coverage for Apache, Tomcat, Nginx, and common application stacks
+- improve structured output for downstream forensic workflows
+- keep PowerTriage focused on practical operational triage rather than becoming a generic Unix artifact framework
+
+## Author
+
+Jesus D. Angosto
+
+- Blog: https://www.dfirspain.es
+- PowerForensics: https://powerforensics.es
+
+## Disclaimer
+
+This tool is provided as-is, without warranty of any kind. Use it only on systems where you have authorization. Test in a controlled environment before using it in production or during an incident.
