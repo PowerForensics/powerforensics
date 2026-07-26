@@ -1,286 +1,119 @@
 # PowerTriage Windows (Community Edition)
 
-> **Acquire. Preserve. Analyze later.**
+**PowerTriage Windows CE** is a native PowerShell triage script for Incident Response and forensic triage on compromised Windows systems, including workstations and servers.
 
-**PowerTriage Windows Community Edition** is a native PowerShell collector designed for Digital Forensics and Incident Response (DFIR) on Windows workstations and servers.
+It is designed around a practical DFIR goal: collect high-value forensic artifacts quickly, with low deployment friction and without external binary dependencies in the Community Edition.
 
-Its purpose is deliberately simple:
+This tool is part of the **PowerForensics** ecosystem.
 
-**Acquire high-value forensic artifacts quickly, consistently and with minimal operational impact.**
+## Positioning
 
-Rather than performing automated detection, incident scoring or evidence interpretation, PowerTriage focuses on collecting structured forensic evidence that can be analyzed using the investigator's preferred workflow, forensic tools or the **PowerForensics** ecosystem.
+The Windows Community Edition is intended to be a strong, openly available live-triage tool for analysts, responders, and defenders.
 
----
+The Community Edition focuses on:
 
-# Why PowerTriage?
+- Fast live triage on Windows.
+- Practical artifact coverage for real investigations.
+- Simple execution in restricted environments.
+- Structured output suitable for escalation and review.
 
-PowerTriage was developed from real-world Incident Response experience.
+The Pro workflow extends this model with deeper professional capabilities such as offline mounted-volume collection, advanced packaging, chain of custody artifacts, and executive reporting.
 
-Many investigations require obtaining a reliable snapshot of a compromised system quickly, often under operational constraints where deploying additional software, installing agents or executing complex frameworks is not desirable.
+## Installation
 
-PowerTriage addresses this scenario by providing a lightweight native collector that:
-
-* Executes directly in PowerShell.
-* Requires no external binaries in the Community Edition.
-* Produces structured outputs suitable for later analysis.
-* Maintains a modular architecture for targeted acquisitions.
-* Prioritizes artifact acquisition over automated interpretation.
-
-PowerTriage is a **collector**, not an analysis platform.
-
----
-
-# Design Principles
-
-PowerTriage is built around a small number of core design principles.
-
-* Native PowerShell implementation.
-* No external binary dependencies (Community Edition).
-* Modular acquisition architecture.
-* Low deployment friction.
-* Low operational impact.
-* Structured evidence collection.
-* DFIR-first design.
-* Practical over theoretical.
-
----
-
-# Architecture
-
-```
-                Windows System
-
-                      │
-
-                      ▼
-
-               PowerTriage Collector
-
-                      │
-
-      ┌───────────────┼────────────────┐
-
-      ▼               ▼                ▼
-
-  System          Network          Processes
-
-      ▼               ▼                ▼
-
- Persistence      Event Logs      User Activity
-
-      ▼               ▼                ▼
-
- Browsers        Cloud Apps        File System
-
-                      │
-
-                      ▼
-
-             Structured Evidence
-
-                      │
-
-                      ▼
-
-              Offline Investigation
-```
-
-PowerTriage intentionally separates **collection** from **analysis**.
-
-This approach allows investigators to use the collected evidence with their preferred forensic workflow while preserving flexibility and minimizing collection complexity.
-
----
-
-# Key Capabilities
-
-## System
-
-* Host information
-* Environment variables
-* Timezone
-* Local users
-* Local groups
-* Administrator enumeration
-* Installed software
-* USB history
-* Clipboard collection
-
----
-
-## Network
-
-* TCP connections with process correlation
-* UDP endpoints
-* DNS cache
-* Network configuration
-* Routing table
-* ARP cache
-* SMB information
-* Firewall configuration
-* Firewall rules
-* Optional live packet capture using native **pktmon**
-
----
-
-## Process Execution
-
-* Running processes
-* Process tree
-* SHA256 hashing
-* Executable path verification
-* Digital signature verification (where available)
-
----
-
-## Persistence
-
-* Scheduled Tasks
-* Windows Services
-* Autoruns
-* Startup folders
-
----
-
-## Event Collection
-
-Collection of key Windows Event Logs including:
-
-* Security
-* System
-* Application
-* PowerShell
-* Sysmon (when available)
-* RDP
-* WMI
-* Additional incident-response relevant logs
-
----
-
-## User Activity
-
-* PowerShell Console History
-* Recent Files
-* Windows Timeline artifacts
-* Recycle Bin
-* Prefetch
-
----
-
-## Browser Artifacts
-
-Collection from common Windows browsers including:
-
-* Browsing history
-* Cookies
-* Login databases
-* Preferences
-* Browser profiles
-* Installed extensions
-* Extension manifests
-* SHA256 hashing of collected extension metadata
-
----
-
-## Email
-
-Where available:
-
-* Microsoft Outlook
-* Thunderbird
-* Windows Mail
-
----
-
-## Cloud Storage
-
-Collection of local artifacts related to:
-
-* Microsoft OneDrive
-* Microsoft Teams
-* Google Drive
-* Dropbox
-
----
-
-## Remote Access
-
-Collection of artifacts related to:
-
-* AnyDesk
-* TeamViewer
-
----
-
-## Locked Evidence
-
-When supported, PowerTriage performs Volume Shadow Copy based acquisition of selected locked artifacts including:
-
-* Registry hives
-* User hives
-* Amcache
-* SRUM
-* Selected forensic artifacts
-
----
-
-# Modular Architecture
-
-PowerTriage is designed around modular collectors.
-
-Depending on the investigation requirements, individual acquisition modules can be executed independently, allowing investigators to reduce acquisition time and operational impact while focusing on the evidence required for a particular case.
-
----
-
-# Requirements
-
-* Windows 10
-* Windows 11
-* Windows Server 2016+
-* PowerShell 5.1 or later
-
-Administrator privileges are recommended for complete acquisition.
-
-Without elevation, PowerTriage will continue collecting accessible artifacts while safely skipping protected resources.
-
----
-
-# Installation
-
-## PowerShell Gallery
+### Option 1: PowerShell Gallery
 
 ```powershell
-Install-Script PowerTriage
+Install-Script -Name PowerTriage
+PowerTriage.ps1
 ```
 
-## Manual
+### Option 2: Manual Download
 
-Download **PowerTriage.ps1** from this repository and execute locally.
+Download `PowerTriage.ps1` from this repository and run it locally.
 
----
+## Key Capabilities
 
-# Usage
+PowerTriage Windows CE is built to provide broad live-response coverage while remaining portable and easy to deploy.
 
-## Default Execution
+### System and Security
+
+- System information, environment variables, timezone, and general host context.
+- Local users, local groups, and administrator enumeration.
+- Persistence coverage through scheduled tasks, services, autoruns, and startup locations.
+- Installed software inventory.
+- USB history and clipboard collection.
+
+### Process and Execution
+
+- Running process collection.
+- Process tree output.
+- SHA256 hashing of collected process-related artifacts where applicable.
+
+### Network and Remote Access
+
+- TCP connection inventory with process correlation.
+- Optional live packet capture via native `pktmon`, including ETL/TXT/PCAPNG output and capture metadata.
+- Firewall configuration and rules.
+- DNS cache and network configuration data.
+- SMB-related information.
+- RDP event collection.
+- Remote access artifacts such as AnyDesk and TeamViewer.
+
+### User and Application Artifacts
+
+- PowerShell console history.
+- Recent files and Timeline-related activity artifacts.
+- Live acquisition of per-user `WebCacheV01.*` (`.dat`, `.jfm`, `.log`, `.chk`) with fallback handling for locked files.
+- Hardened live acquisition of `ActivitiesCache.db`, `ActivitiesCache.db-wal`, and `ActivitiesCache.db-shm`.
+- Browser artifacts from common Windows browsers.
+- Email and cloud-storage-related artifacts where present.
+
+### File System and Evidence-Oriented Collection
+
+- Prefetch collection.
+- Recycle Bin parsing and export.
+- VSS-based collection for selected locked files.
+- SHA256 hashing of collected files.
+- Final compressed output for easier handling and transfer.
+
+## Community Edition Scope
+
+The Community Edition is designed to remain genuinely useful for the DFIR community. It is not intended to be a token or artificially crippled release.
+
+In general, CE covers live triage well. The main areas reserved for Pro are workflows that add professional acquisition depth or customer-facing delivery value, especially:
+
+- Offline collection from mounted Windows volumes.
+- Offline hives and selected NTFS metadata acquisition.
+- Advanced evidence packaging and split archives.
+- Chain of custody outputs beyond basic hashing.
+- Executive or customer-facing reporting.
+
+## Requirements
+
+- Windows 10, Windows 11, Windows Server 2016/2019/2022.
+- PowerShell 5.1 or later.
+- Administrator rights are recommended for fuller collection.
+
+PowerTriage can still collect a useful subset of artifacts without elevation, but protected areas and some system-level evidence will be limited.
+
+## Usage
+
+### Default Execution
 
 ```powershell
 .\PowerTriage.ps1
 ```
 
-When no collection mode is specified, PowerTriage now runs the full Community Edition workflow by default and writes the output to the current directory.
+If no execution mode is supplied, CE runs the `Full` workflow by default and writes output to the current directory.
 
-Use `-Minimal` only when you want a reduced volatile triage focused on `Network`, `System`, and `Process`.
-
----
-
-## Output Directory
+### Unattended Mode
 
 ```powershell
-.\PowerTriage.ps1 -OutputDirectory "D:\Cases\Case001"
+.\PowerTriage.ps1 -OutputDirectory "Z:\Evidence\Case_001"
 ```
 
----
-
-## Output Retention
+### Output Retention
 
 ```powershell
 .\PowerTriage.ps1 -OutputRetention Both
@@ -288,142 +121,116 @@ Use `-Minimal` only when you want a reduced volatile triage focused on `Network`
 .\PowerTriage.ps1 -OutputRetention ZipOnly
 ```
 
-`Both` is the default and preserves both the uncompressed evidence directory and the final ZIP package.
+`Both` is the default and keeps the directory tree plus the final ZIP package.
 
-This is especially useful for remote collection workflows where a large ZIP may be difficult to transfer in a single pass and the analyst may prefer to retrieve only selected files or directories.
+This is recommended for remote collection workflows where a large ZIP may be difficult to copy in one pass and it can be more practical to recover only the specific files or folders needed from the uncompressed tree.
 
----
+### Packet Capture
 
-## Minimal Collection
+```powershell
+.\PowerTriage.ps1 -PacketCaptureQuick -PacketCaptureProtocol TCP -PacketCapturePort 443 -O "Z:\Evidence\Case_001"
+```
+
+```powershell
+.\PowerTriage.ps1 -PacketCapture -PacketCaptureDropOnly -PacketCaptureFormat pcapng -PacketCaptureProtocol TCP -O "Z:\Evidence\Case_001"
+```
+
+### Minimal Collection
 
 ```powershell
 .\PowerTriage.ps1 -Minimal
 ```
 
----
-
-## Full Workflow
+### Full Workflow
 
 ```powershell
 .\PowerTriage.ps1 -Full
 ```
 
-`-Full` executes the complete Community Edition workflow, including:
+`-Full` now runs the complete CE workflow, including Chronos timeline export, Nexus Lite graph export, findings generation, and `Executive_Report.html`.
 
-* Full artifact collection
-* Chronos timeline export
-* Nexus Lite graph export
-* Findings generation
-* `Executive_Report.html`
+The Chronos timeline export is emitted as a JSON array of events and includes the required `id`, `timestamp`, and `title` fields expected by Chronos.
 
-The Chronos timeline is exported in a compatible JSON format and includes the required `id`, `timestamp`, and `title` fields expected by Chronos.
-
----
-
-## Packet Capture
+### Execution Policy Bypass
 
 ```powershell
-.\PowerTriage.ps1 -PacketCaptureQuick
+PowerShell.exe -ExecutionPolicy Bypass -File .\PowerTriage.ps1
 ```
 
-or
+## Output Structure
 
-```powershell
-.\PowerTriage.ps1 -PacketCapture
-```
+The script creates a directory named `PowerTriage_HOSTNAME_TIMESTAMP`.
 
----
+Output retention is controlled with `-OutputRetention`:
 
-## Help
+- `Both` (default): keep the directory and create `PowerTriage_HOSTNAME_TIMESTAMP.zip`
+- `DirectoryOnly`: keep only the directory tree and skip ZIP generation
+- `ZipOnly`: create the ZIP and remove the directory tree after successful compression
 
-```powershell
-.\PowerTriage.ps1 -Help
-```
+Typical contents include:
 
----
+| Folder/File | Description |
+|---|---|
+| `Activities_Cache\` | Per-user `ConnectedDevicesPlatform` artifacts plus hardened live copies of `ActivitiesCache.db`, `ActivitiesCache.db-wal`, `ActivitiesCache.db-shm`, and `WebCacheV01.*` (`.dat`, `.jfm`, `.log`, `.chk`). |
+| `Browsers\` | Browser history, cookies, profiles, extensions, and related artifacts. |
+| `CloudStorage\` | Metadata and local artifacts from cloud-storage applications where present. |
+| `EmailArtifacts\` | Outlook, Thunderbird, and Windows Mail related artifacts. |
+| `EventsLogs\` | Key EVTX exports and event-derived outputs. |
+| `Network\` | Active connections, DNS, SMB, routes, and other network-related outputs. |
+| `Network\PacketCapture\` | Optional `pktmon` ETL/TXT/PCAPNG outputs, capture metadata, and packet-capture JSON report. |
+| `PowerShellConsole_History\` | Console history per user where available. |
+| `Prefetch\` | Windows Prefetch artifacts. |
+| `ProcessInformation\` | Process inventory, hashes, and process tree output. |
+| `Recent_Items\` | Recent file shortcuts and related user activity artifacts. |
+| `RecycleBin\` | Deleted-file metadata and small recovered Recycle Bin artifacts. |
+| `RemoteAccess\` | AnyDesk and TeamViewer related artifacts. |
+| `System\` | Autoruns, services, USB history, local groups, scheduled tasks, software inventory, and more. |
+| `SystemConfig\` | System information, local users, and firewall-related outputs. |
+| `VSS_Artifacts\` | Selected locked files collected via Volume Shadow Copy workflows. |
+| `Hashes.csv` | SHA256 hashes of collected artifacts. |
+| `Findings\` | CE findings in CSV, JSONL, and text-summary form. |
+| `Executive_Report.html` | Quick HTML summary of host context, findings, and collection overview. |
+| `Timeline\PowerTriage_Timeline_Chronos.json` | Chronos-compatible timeline JSON with required event fields. |
+| `Network\Nexus_Graph_Lite.json` | Lightweight Nexus graph JSON for CE workflows. |
+| `PowerTriage.log` | Execution log with timestamps. |
 
-# Output Structure
+When `-OutputRetention Both` or `-OutputRetention ZipOnly` is used, the ZIP file is created alongside the output directory in the selected parent path.
 
-PowerTriage generates a structured evidence directory and, depending on `-OutputRetention`, can also generate a ZIP package in parallel or keep only one of the two output forms.
+## CE vs PRO for Windows
 
-Typical outputs include:
+| Capability | CE | PRO |
+|---|---|---|
+| Windows live triage | Yes | Yes |
+| Modular PowerShell collection | Yes | Yes |
+| Browser, user, system, process, network, event artifacts | Yes | Yes |
+| Optional live packet capture with `pktmon` | Yes | Yes |
+| VSS-oriented live collection | Yes | Yes |
+| Basic hashing and packaged output | Yes | Yes |
+| Offline mounted-volume collection | No | Yes |
+| Offline hives and user artifacts | No | Yes |
+| Offline NTFS metadata collection | No | Yes |
+| Chain of custody package | No | Yes |
+| HTML summary reporting | Yes | Yes |
+| Advanced archive handling | No | Yes |
 
-* Activities Cache
-* Browser Artifacts
-* Cloud Storage
-* Email Artifacts
-* Event Logs
-* Network Information
-* Packet Capture
-* PowerShell History
-* Prefetch
-* Process Information
-* Recent Items
-* Recycle Bin
-* Remote Access
-* System Information
-* System Configuration
-* VSS Artifacts
-* `Timeline\PowerTriage_Timeline_Chronos.json`
-* `Network\Nexus_Graph_Lite.json`
-* `Findings\Findings.csv`
-* `Findings\Findings.jsonl`
-* `Findings\Findings_Summary.txt`
-* `Executive_Report.html`
-* SHA256 Hashes
-* Execution Log
+## Operational Notes
 
----
+- Run from an elevated PowerShell session when possible.
+- `pktmon` packet capture requires elevation and is intended for live collection only.
+- `Both` is the safest default for remote work because it preserves the full tree even if moving a large ZIP becomes inconvenient.
+- `ZipOnly` only removes the directory after successful ZIP creation. If compression fails, PowerTriage keeps the directory tree.
+- Locked `WebCache` and `ActivitiesCache` files are retried with live fallbacks and each failure is written explicitly to `PowerTriage.log`.
+- Test in a controlled lab before production deployment.
+- Review collected artifacts according to your organization’s evidence-handling procedures.
 
-# Operational Notes
+## Author
 
-* Execute from an elevated PowerShell session whenever possible.
-* Packet capture requires administrative privileges.
-* Test in controlled environments before production deployment.
-* Always follow your organization's evidence handling procedures.
+**Jesus D. Angosto** (`@jdangosto`)
 
----
+- X/Twitter: [@jdangosto](https://twitter.com/jdangosto)
+- GitHub: [jdangosto](https://github.com/jdangosto)
+- Project: [PowerForensics](https://powerforensics.es)
 
-# Roadmap
+## Disclaimer
 
-Current development focuses on:
-
-* Expanding forensic artifact coverage.
-* Improving modular acquisition.
-* Enhancing server-oriented collection.
-* Continuous stability and performance improvements.
-
-PowerTriage will continue evolving while maintaining its core philosophy of lightweight, structured evidence acquisition.
-
----
-
-# Contributing
-
-Community feedback, testing and artifact suggestions are always welcome.
-
-Practical DFIR experience is especially valuable for guiding future development.
-
----
-
-# Author
-
-**Jesús D. Angosto**
-
-DFIR | Incident Response | Digital Forensics
-
-GitHub:
-https://github.com/jdangosto
-
-Project:
-
-https://powerforensics.es
-
----
-
-# Disclaimer
-
-PowerTriage is provided **as is**, without warranty of any kind.
-
-Always validate its behaviour in controlled environments before operational deployment.
-
-The operator remains responsible for ensuring that evidence acquisition complies with applicable legal, regulatory and organizational requirements.
+This tool is provided "as is" without warranty of any kind. Use it at your own risk. Always test in a controlled environment before using it in production or during a live investigation.
