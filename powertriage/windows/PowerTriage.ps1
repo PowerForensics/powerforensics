@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 2.3.3
+.VERSION 2.3.4
 .GUID 978e8b23-1d54-46c5-a20c-7b2d5f81e7d2
 .AUTHOR Jesus Angosto
 .COMPANYNAME PowerForensics
@@ -147,7 +147,7 @@ param(
 # PowerTriage Windows CE
 # Live Response & Forensic Triage Tool
 
-$Version = "2.3.3"
+$Version = "2.3.4"
 
 function Show-Banner {
     Clear-Host
@@ -352,6 +352,130 @@ function Set-ArtifactVisible {
             cmd /c attrib -h -s "$Path" 2>$null | Out-Null
         }
     } catch {}
+}
+
+function Ensure-AcquiredArtifactAccessible {
+    param([string]$Path)
+
+    try {
+        if (-not (Test-Path -LiteralPath $Path -ErrorAction SilentlyContinue)) { return }
+
+        Set-ArtifactVisible -Path $Path
+
+        try {
+            $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if ($item.PSIsContainer) {
+                Get-ChildItem -LiteralPath $Path -Force -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                    Set-ArtifactVisible -Path $_.FullName
+                }
+            } else {
+                $item.Attributes = [System.IO.FileAttributes]::Normal
+            }
+        } catch {}
+
+        $currentIdentity = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
+        try {
+            cmd /c "takeown /f ""$Path"" /a /r /d y" 1>$null 2>$null | Out-Null
+        } catch {}
+        try {
+            cmd /c "icacls ""$Path"" /inheritance:e /grant:r ""$currentIdentity"":F /t /c" 1>$null 2>$null | Out-Null
+        } catch {}
+    } catch {}
+}
+
+function Get-RelativeChildPath {
+    param(
+        [string]$BasePath,
+        [string]$FullPath
+    )
+
+    $normalizedBase = $BasePath.TrimEnd('\')
+    if ($FullPath.StartsWith($normalizedBase, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $FullPath.Substring($normalizedBase.Length).TrimStart('\')
+    }
+
+    return [System.IO.Path]::GetFileName($FullPath)
+}
+
+function Copy-LiveArtifactWithFallback {
+    param(
+        [string]$SourcePath,
+        [string]$DestinationPath,
+        [ValidateSet('Copy','Esent','Backup')]
+        [string]$PreferredMethod = 'Copy',
+        [string]$ArtifactTag = 'Artifact'
+    )
+
+    if (-not (Test-Path -LiteralPath $SourcePath -ErrorAction SilentlyContinue)) {
+        WriteLog -Level "WARN" -Message "$ArtifactTag source not found: $SourcePath"
+        return $false
+    }
+
+    $destDir = Split-Path -Path $DestinationPath -Parent
+    if (-not (Test-Path -LiteralPath $destDir -ErrorAction SilentlyContinue)) {
+        New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+    }
+
+    $copySucceeded = $false
+    $copyMethod = $null
+
+    try {
+        Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force -ErrorAction Stop
+        $copySucceeded = $true
+        $copyMethod = "CopyItem"
+    } catch {
+        $message = $_.Exception.Message
+        $lockHint = if ($message -match 'used by another process|sharing violation|being used') { " Possible lock detected." } else { "" }
+        WriteLog -Level "WARN" -Message "$ArtifactTag direct copy failed. Src=$SourcePath Dest=$DestinationPath Error=$message$lockHint"
+        Remove-Item -LiteralPath $DestinationPath -Force -ErrorAction SilentlyContinue
+    }
+
+    if ((-not $copySucceeded) -and ($PreferredMethod -eq 'Esent')) {
+        $esentCmd = Get-Command esentutl -ErrorAction SilentlyContinue
+        if ($esentCmd) {
+            try {
+                $esentOutput = & esentutl /y $SourcePath /d $DestinationPath /o 2>&1 | Out-String
+                if ((Test-Path -LiteralPath $DestinationPath -ErrorAction SilentlyContinue) -and ($LASTEXITCODE -eq 0)) {
+                    $copySucceeded = $true
+                    $copyMethod = "esentutl"
+                } else {
+                    WriteLog -Level "WARN" -Message "$ArtifactTag esentutl fallback failed. Src=$SourcePath Dest=$DestinationPath ExitCode=$LASTEXITCODE Output=$($esentOutput.Trim())"
+                    Remove-Item -LiteralPath $DestinationPath -Force -ErrorAction SilentlyContinue
+                }
+            } catch {
+                WriteLog -Level "WARN" -Message "$ArtifactTag esentutl fallback exception. Src=$SourcePath Dest=$DestinationPath Error=$($_.Exception.Message)"
+                Remove-Item -LiteralPath $DestinationPath -Force -ErrorAction SilentlyContinue
+            }
+        } else {
+            WriteLog -Level "WARN" -Message "$ArtifactTag esentutl fallback unavailable on this host. Src=$SourcePath"
+        }
+    }
+
+    if (-not $copySucceeded) {
+        try {
+            $srcDir = Split-Path -Path $SourcePath -Parent
+            $srcName = Split-Path -Path $SourcePath -Leaf
+            $roboOutput = & robocopy $srcDir $destDir $srcName /B /R:0 /W:0 /COPY:DAT /NP /NFL /NDL /NJH /NJS 2>&1 | Out-String
+            if (Test-Path -LiteralPath $DestinationPath -ErrorAction SilentlyContinue) {
+                $copySucceeded = $true
+                $copyMethod = "robocopy /B"
+            } else {
+                WriteLog -Level "WARN" -Message "$ArtifactTag robocopy backup fallback failed. Src=$SourcePath Dest=$DestinationPath ExitCode=$LASTEXITCODE Output=$($roboOutput.Trim())"
+            }
+        } catch {
+            WriteLog -Level "WARN" -Message "$ArtifactTag robocopy backup fallback exception. Src=$SourcePath Dest=$DestinationPath Error=$($_.Exception.Message)"
+        }
+    }
+
+    if ($copySucceeded) {
+        Ensure-AcquiredArtifactAccessible -Path $DestinationPath
+        WriteHash -FilePath $DestinationPath
+        WriteLog -Level "INFO" -Message "$ArtifactTag acquired using $copyMethod. Src=$SourcePath Dest=$DestinationPath"
+        return $true
+    }
+
+    WriteLog -Level "ERROR" -Message "$ArtifactTag acquisition failed after live copy fallbacks. Src=$SourcePath Dest=$DestinationPath"
+    return $false
 }
 
 function Get-BrowserProcessNames {
@@ -1339,8 +1463,8 @@ if ($RunAll -or $Users) { RecentFiles }
 # Task 19: Activities Cache
 function ActivitiesCache{
 Write-Host "Running task 19 of 33" -ForegroundColor Yellow
-Write-Host "Collecting Activities Cache (all users)..."
-    WriteLog -Level "INFO" -Message "Collecting Activities Cache (all users)"
+Write-Host "Collecting Activities Cache and WebCache (all users)..."
+    WriteLog -Level "INFO" -Message "Collecting Activities Cache and WebCache (all users)"
     $ActivitiesFolder = "$FolderCreation\Activities_Cache"
     New-Item -Path $ActivitiesFolder -ItemType Directory -Force | Out-Null
 
@@ -1349,26 +1473,76 @@ Write-Host "Collecting Activities Cache (all users)..."
     
     $totalUsers = $userDirectories.Count
     $userCount = 0
+    $totalActivitiesFiles = 0
+    $totalWebCacheFiles = 0
+    $totalFailures = 0
 
     foreach ($userDir in $userDirectories) {
         $userCount++
         Write-Progress -Activity "Collecting Activities Cache" -Status "Processing user $($userDir.Name) ($userCount / $totalUsers)" -PercentComplete (($userCount / $totalUsers) * 100)
 
         $userName = $userDir.Name
+        $userRoot = Join-Path $ActivitiesFolder $userName
+        New-Item -Path $userRoot -ItemType Directory -Force | Out-Null
         $CDPPath = Join-Path -Path $userDir.FullName -ChildPath "AppData\Local\ConnectedDevicesPlatform"
+        $webCacheDir = Join-Path -Path $userDir.FullName -ChildPath "AppData\Local\Microsoft\Windows\WebCache"
+        $userActivitiesCopied = 0
+        $userWebCacheCopied = 0
+        $userFailures = 0
         
         if (Test-Path $CDPPath) {
-            $destino = Join-Path $ActivitiesFolder $userName
-            New-Item -Path $destino -ItemType Directory -Force | Out-Null
-            Copy-Item "$CDPPath\*" -Destination "$destino" -Force -Recurse -ErrorAction SilentlyContinue
-            $count = (Get-ChildItem -Path $destino -Recurse -File).Count
-            if ($count -gt 0) {
-                WriteLog -Level "INFO" -Message "Activities Cache collected for user $userName ($count files)"
+            $activitiesDest = Join-Path $userRoot "ConnectedDevicesPlatform"
+            New-Item -Path $activitiesDest -ItemType Directory -Force | Out-Null
+
+            $cdpCopyErrors = @()
+            Copy-Item (Join-Path $CDPPath '*') -Destination $activitiesDest -Force -Recurse -ErrorAction SilentlyContinue -ErrorVariable +cdpCopyErrors
+            if ($cdpCopyErrors.Count -gt 0) {
+                WriteLog -Level "WARN" -Message "Best-effort ConnectedDevicesPlatform copy encountered $($cdpCopyErrors.Count) errors for user $userName. Critical ActivitiesCache files will be retried with live fallbacks."
             }
+
+            $activityFiles = @(Get-ChildItem -LiteralPath $CDPPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object {
+                $_.Name -in @('ActivitiesCache.db','ActivitiesCache.db-wal','ActivitiesCache.db-shm')
+            })
+
+            foreach ($activityFile in $activityFiles) {
+                $relativePath = Get-RelativeChildPath -BasePath $CDPPath -FullPath $activityFile.FullName
+                $destinationPath = Join-Path $activitiesDest $relativePath
+                if (Copy-LiveArtifactWithFallback -SourcePath $activityFile.FullName -DestinationPath $destinationPath -PreferredMethod 'Backup' -ArtifactTag "ActivitiesCache [$userName]") {
+                    $userActivitiesCopied++
+                    $totalActivitiesFiles++
+                } else {
+                    $userFailures++
+                    $totalFailures++
+                }
+            }
+        }
+
+        if (Test-Path $webCacheDir) {
+            $webCacheDest = Join-Path $userRoot "WebCache"
+            New-Item -Path $webCacheDest -ItemType Directory -Force | Out-Null
+            $webCacheFiles = @(Get-ChildItem -LiteralPath $webCacheDir -File -Force -ErrorAction SilentlyContinue | Where-Object {
+                $_.Name -match '^WebCacheV\d+\.(dat|jfm)$' -or $_.Extension -in @('.log', '.chk')
+            })
+
+            foreach ($webCacheFile in $webCacheFiles) {
+                $destinationPath = Join-Path $webCacheDest $webCacheFile.Name
+                if (Copy-LiveArtifactWithFallback -SourcePath $webCacheFile.FullName -DestinationPath $destinationPath -PreferredMethod 'Esent' -ArtifactTag "WebCache [$userName]") {
+                    $userWebCacheCopied++
+                    $totalWebCacheFiles++
+                } else {
+                    $userFailures++
+                    $totalFailures++
+                }
+            }
+        }
+
+        $count = (Get-ChildItem -Path $userRoot -Recurse -File -ErrorAction SilentlyContinue).Count
+        if (($count -gt 0) -or ($userFailures -gt 0)) {
+            WriteLog -Level "INFO" -Message "Activity artifacts collected for user $userName ($count files, ActivitiesCache hardened=$userActivitiesCopied, WebCache hardened=$userWebCacheCopied, failures=$userFailures)"
         }
     }
     Write-Progress -Activity "Collecting Activities Cache" -Completed
-    WriteLog -Level "INFO" -Message "Activities Cache collection done"
+    WriteLog -Level "INFO" -Message "Activities Cache and WebCache collection done. ActivitiesCacheFiles=$totalActivitiesFiles WebCacheFiles=$totalWebCacheFiles Failures=$totalFailures"
 }
 if ($RunAll -or $Users) { ActivitiesCache }
 
