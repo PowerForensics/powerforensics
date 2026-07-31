@@ -7,8 +7,6 @@ It is designed for DFIR work on servers, cloud workloads, containers, and produc
 PowerTriage Linux is part of the PowerForensics ecosystem.
 
 
-PowerTriage Linux is part of the PowerForensics ecosystem.
-
 It can be used as a standalone collector or as the Linux acquisition component within the broader PowerForensics DFIR workflow.
 
 ## What's New
