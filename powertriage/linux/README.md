@@ -6,7 +6,10 @@ It is designed for DFIR work on servers, cloud workloads, containers, and produc
 
 PowerTriage Linux is part of the PowerForensics ecosystem.
 
-For offline Windows collection from a Linux forensic host, see `PowerTriage_ProLinux.sh` and `README_PRO_LINUX.md`. That draft workflow also supports metadata-only `FileTree` export for later review and processing.
+
+PowerTriage Linux is part of the PowerForensics ecosystem.
+
+It can be used as a standalone collector or as the Linux acquisition component within the broader PowerForensics DFIR workflow.
 
 ## What's New
 
@@ -317,10 +320,16 @@ In fast mode:
 Planned direction:
 
 - modularize collection areas without losing Bash portability
+
 - introduce clearer module inventory and per-module summaries
+
 - improve web server coverage for Apache, Tomcat, Nginx, and common application stacks
+
 - improve structured output for downstream forensic workflows
+
 - keep PowerTriage focused on practical operational triage rather than becoming a generic Unix artifact framework
+
+Future work will continue expanding artifact coverage, improving modularity, and enhancing structured outputs while maintaining the project's practical DFIR-first philosophy.
 
 ## Author
 
